@@ -10,12 +10,16 @@ const WINDOW_MIN = Number(env.WINDOW_MIN ?? 5); // asked member's last known loc
 const RESPOND_MIN = Number(env.RESPOND_MIN ?? 20); // how long an asked member is "on the clock" (and tracked)
 const PICK_WINDOW_MIN = Number(env.PICK_WINDOW_MIN ?? 20); // how long a picked member has to use their chance to ask
 const PICK_PERCENT = Number(env.PICK_PERCENT ?? 3.36); // share of members picked each day to ask someone to raise
+const GAME_START = Number(env.GAME_START ?? 150); // no one is picked until this many members have joined
 // Apple push (set these as Railway variables; push to iPhones is skipped until they exist)
 const APNS_KEY = (env.APNS_KEY ?? "").replace(/\\n/g, "\n"); // contents of the .p8 file
 const APNS_KEY_ID = env.APNS_KEY_ID ?? "";
 const APNS_TEAM_ID = env.APNS_TEAM_ID ?? "RNDGPS64D6";
 const APNS_TOPIC = env.APNS_TOPIC ?? "ai.nearune.raise"; // the app's bundle ID
 const APNS_HOST = env.APNS_ENV === "sandbox" ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
+// Apple WeatherKit (sky background): set WEATHERKIT_KEY (.p8 contents) and WEATHERKIT_KEY_ID as Railway variables
+const WK_KEY = (env.WEATHERKIT_KEY ?? "").replace(/\\n/g, "\n");
+const WK_KEY_ID = env.WEATHERKIT_KEY_ID ?? "";
 const sql = new SQL(env.DATABASE_URL!);
 
 // ---------- database ----------
@@ -66,7 +70,13 @@ function hav(lat1: number, lon1: number, lat2: number, lon2: number) {
   const a = Math.sin(dp / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dl / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 }
+// The game day runs on Pacific time.
 const ptDay = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+// Asking is only open 9:00 a.m. to 6:00 p.m. Pacific.
+const inAskHours = () => {
+  const h = Number(new Date().toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false }));
+  return h >= 9 && h < 18;
+};
 const ptTime = (d: Date) =>
   d.toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " PT";
 function coords(b: any) {
@@ -126,10 +136,46 @@ async function push(userId: number, title: string, body: string, track = false) 
   }
 }
 
+// ---------- sky (Apple WeatherKit) ----------
+let wkJwt = { token: "", at: 0 };
+async function wkToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (wkJwt.token && now - wkJwt.at < 2400) return wkJwt.token;
+  const b64 = (o: any) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const head = b64({ alg: "ES256", kid: WK_KEY_ID, id: `${APNS_TEAM_ID}.${APNS_TOPIC}`, typ: "JWT" });
+  const claims = b64({ iss: APNS_TEAM_ID, iat: now, exp: now + 3600, sub: APNS_TOPIC });
+  const der = Buffer.from(WK_KEY.replace(/-----[^-]+-----/g, "").replace(/\s+/g, ""), "base64");
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const sig = Buffer.from(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, Buffer.from(`${head}.${claims}`))).toString("base64url");
+  wkJwt = { token: `${head}.${claims}.${sig}`, at: now };
+  return wkJwt.token;
+}
+const skyCache = new Map<string, { at: number; v: any }>();
+// Current sky for a place. Location is rounded to about 11 km, used for this lookup only, and never stored.
+async function sky(lat: number, lng: number) {
+  if (!WK_KEY || !WK_KEY_ID) throw new Error("WeatherKit is not configured");
+  const la = lat.toFixed(1), lo = lng.toFixed(1);
+  const k = `${la},${lo}`;
+  const hit = skyCache.get(k);
+  if (hit && Date.now() - hit.at < 10 * 60000) return hit.v;
+  const res = await fetch(`https://weatherkit.apple.com/api/v1/weather/en/${la}/${lo}?dataSets=currentWeather`, {
+    headers: { authorization: `Bearer ${await wkToken()}` },
+  });
+  if (!res.ok) throw new Error(`WeatherKit ${res.status}`);
+  const cw = ((await res.json()) as any).currentWeather;
+  const v = { condition: String(cw?.conditionCode ?? "Clear"), daylight: cw?.daylight !== false, cloud: Number(cw?.cloudCover ?? 0) };
+  if (skyCache.size > 500) skyCache.clear();
+  skyCache.set(k, { at: Date.now(), v });
+  return v;
+}
+
 // Daily lottery: the first request of each Pacific day picks PICK_PERCENT of members (at least 1)
 // who get to ask someone to raise their hand today. Returns true if this call ran the draw.
 async function ensureDraw(): Promise<boolean> {
   const day = ptDay();
+  // The game has not started yet: nobody is picked until GAME_START members have joined.
+  if (Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c) < GAME_START) return false;
+  if (!inAskHours()) return false; // picks go out once the day's asking hours open
   const claimed = await sql`INSERT INTO draws (day) VALUES (${day}) ON CONFLICT DO NOTHING RETURNING day`;
   if (!claimed.length) return false;
   const ids: number[] = (await sql`SELECT id FROM users`).map((x: any) => x.id);
@@ -182,7 +228,7 @@ async function state(uid: number | null) {
   const out: any = {
     clock: { since: prev.toISOString(), matches: n, record: rec == null ? null : Number(rec) },
     history: hist.map((h: any) => ({ ts: new Date(h.ts).toISOString(), elapsed: Number(h.elapsed) })),
-    players, vapid: VAPID.publicKey, pick_percent: PICK_PERCENT, respond_min: RESPOND_MIN, pick_window_min: PICK_WINDOW_MIN, me: null,
+    players, game_start: GAME_START, started: players >= GAME_START, vapid: VAPID.publicKey, pick_percent: PICK_PERCENT, respond_min: RESPOND_MIN, pick_window_min: PICK_WINDOW_MIN, me: null,
   };
   const u = await getUser(uid);
   if (u) {
@@ -203,7 +249,7 @@ async function state(uid: number | null) {
       picked: !!pk, used,
       pick_until: pk ? pk.until.toISOString() : null,
       pick_expired: !!pk && pk.expired && !used,
-      can_send: !!pk && !pk.expired && !used,
+      can_send: players >= GAME_START && inAskHours() && !!pk && !pk.expired && !used,
       missed, push: !!u.push_sub || !!u.apns_token, assignment,
     };
   }
@@ -222,10 +268,21 @@ async function api(req: Request, path: string): Promise<Response> {
     const id = r[0].id;
     // If today's draw already happened, a late joiner gets the same small chance as everyone else.
     const ranDraw = await ensureDraw();
-    if (!ranDraw && Math.random() * 100 < PICK_PERCENT) {
+    const joined = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
+    if (!ranDraw && joined >= GAME_START && inAskHours() && Math.random() * 100 < PICK_PERCENT) {
       await sql`INSERT INTO picks (day, user_id, picked_ts) VALUES (${ptDay()}, ${id}, ${new Date()}) ON CONFLICT DO NOTHING`;
     }
     return json({ ok: true }, 200, { "set-cookie": sessionCookie(id) });
+  }
+  if (path === "/sky") { // sky background for the viewer's place (works before joining)
+    const c = coords(body);
+    if (!c) return json({ error: "Location is required." }, 400);
+    try {
+      return json(await sky(c.lat, c.lng));
+    } catch (e) {
+      console.error("sky failed", e);
+      return json({ error: "Sky unavailable." }, 502);
+    }
   }
   const u = await getUser(uid);
   if (!u) return json({ error: "Please join first." }, 401);
@@ -257,9 +314,12 @@ async function api(req: Request, path: string): Promise<Response> {
 
   if (path === "/send") { // button 1: ask a random other member to raise their right hand
     await sweep();
+    const total = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
+    if (total < GAME_START) return json({ error: `The game starts when ${GAME_START} members have joined.` }, 400);
+    if (!inAskHours()) return json({ error: "Asking is open from 9:00 a.m. to 6:00 p.m. Pacific." }, 400);
     const pk = await pickInfo(u.id);
     if (!pk) return json({ error: "You weren't picked today. A small share of members is picked each day." }, 400);
-    if (await usedToday(u.id)) return json({ error: "You've used today's chance. It resets at midnight Pacific." }, 400);
+    if (await usedToday(u.id)) return json({ error: "You've used today's chance. It resets at 9:00 a.m. Pacific." }, 400);
     if (pk.expired) return json({ error: `Your ${PICK_WINDOW_MIN}-minute window to ask expired at ${ptTime(pk.until)}.` }, 400);
     const seen = new Date(Date.now() - 120000);
     const cands = await sql`SELECT id FROM users WHERE id<>${u.id} AND (push_sub IS NOT NULL OR apns_token IS NOT NULL OR last_seen>=${seen}) AND id NOT IN (SELECT target_id FROM sends WHERE status IN ('pending','raised'))`;
@@ -327,21 +387,34 @@ const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rec
 
 const PAGE = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1220"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f1220" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#f3f5fb" media="(prefers-color-scheme: light)"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Raise Your Right Hand">
 <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg">
 <title>Raise Your Right Hand</title>
 <style>
-:root{--bg:#0f1220;--card:#1a1f36;--ink:#f2f4ff;--mut:#9aa3c7;--acc:#ffb347}
+:root{color-scheme:dark light;--bg:#0f1220;--card:#1a1f36;--ink:#f2f4ff;--mut:#9aa3c7;--acc:#ffb347;--line:#2c3354;--noteb:#4a5280;--notebg:#232845;--btn:#222}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--card:#ffffff;--ink:#14182b;--mut:#5b6385;--acc:#c46a00;--line:#dde1ee;--noteb:#c9cfe3;--notebg:#eef1fa;--btn:#ffffff}}
+html{min-height:100%}
+body[class*=sky-]{background-attachment:fixed;background-repeat:no-repeat;min-height:100vh}
+body.sky-clear{background-image:linear-gradient(#3b8de0,#a9d6ff)}
+body.sky-cloud{background-image:linear-gradient(#7d90a6,#cfd8e2)}
+body.sky-rain{background-image:linear-gradient(#3f4c5c,#7d8a99)}
+body.sky-storm{background-image:linear-gradient(#262d3a,#58626f)}
+body.sky-snow{background-image:linear-gradient(#aebccd,#eef3f8)}
+body.sky-fog{background-image:linear-gradient(#a3adb5,#dde1e4)}
+body.sky-night{background-image:radial-gradient(1.5px 1.5px at 12% 14%,#fff,transparent),radial-gradient(1.5px 1.5px at 38% 8%,#fff,transparent),radial-gradient(1px 1px at 63% 18%,#fff,transparent),radial-gradient(1.5px 1.5px at 85% 10%,#fff,transparent),radial-gradient(1px 1px at 24% 30%,#fff,transparent),radial-gradient(1px 1px at 74% 34%,#fff,transparent),linear-gradient(#070b24,#1d2757)}
+body[class*=sky-] h1{color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.45)}
+body.sky-snow h1,body.sky-fog h1{color:#14182b;text-shadow:none}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px;padding-top:max(16px,env(safe-area-inset-top));max-width:480px;margin:auto}
 h1{font-size:22px;margin:8px 0}.card{background:var(--card);border-radius:14px;padding:16px;margin:12px 0}
 .clock{font-size:34px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
 .mut{color:var(--mut);font-size:14px}p{margin:6px 0}
-button{width:100%;padding:14px;margin:6px 0;border:0;border-radius:12px;font-size:17px;font-weight:600;background:var(--acc);color:#222}
-button.alt{background:#2c3354;color:var(--ink)}button:disabled{opacity:.5}.msg{margin-top:8px;font-size:14px;min-height:18px}
-.hot{border:2px solid var(--acc)}.note{border:1px solid #4a5280;background:#232845}.row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-top:1px solid #2c3354}
+button{width:100%;padding:14px;margin:6px 0;border:0;border-radius:12px;font-size:17px;font-weight:600;background:var(--acc);color:var(--btn)}
+button.alt{background:var(--line);color:var(--ink)}button:disabled{opacity:.5}.msg{margin-top:8px;font-size:14px;min-height:18px}
+.hot{border:2px solid var(--acc)}.note{border:1px solid var(--noteb);background:var(--notebg)}.row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-top:1px solid var(--line)}
 </style></head><body>
 <h1>&#9995; Raise Your Right Hand</h1>
+<div class="card"><div class="mut">Members</div><div class="clock" id="members">--</div></div>
 <div class="card"><div class="mut">Time since the last confirmed sighting</div>
 <div class="clock" id="clock">--</div><div class="mut" id="stats"></div></div>
 <div id="join" class="card" style="display:none">
@@ -368,6 +441,25 @@ function pt(x){return new Date(x).toLocaleString('en-US',{timeZone:'America/Los_
 function tick(){if(S)$('clock').textContent=fmt((Date.now()-new Date(S.clock.since).getTime())/1000)}
 function urlB64(b){const p='='.repeat((4-b.length%4)%4);const r=atob((b+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
 
+/* ---- sky background: Apple WeatherKit for the viewer's place, clock-based if location is off ---- */
+function applySky(d){
+  const c=String(d.condition||'');
+  let k='clear';
+  if(d.daylight===false)k='night';
+  else if(/thunder|storm/i.test(c))k='storm';
+  else if(/rain|drizzle|shower|hail|sleet/i.test(c))k='rain';
+  else if(/snow|flurr|blizzard|ice/i.test(c))k='snow';
+  else if(/fog|haze|smok|dust/i.test(c))k='fog';
+  else if(/cloud/i.test(c)&&!/partly/i.test(c))k='cloud';
+  document.body.className='sky-'+k}
+function clockSky(){const h=new Date().getHours();applySky({daylight:h>=7&&h<19,condition:'Clear'})}
+function loadSky(){
+  clockSky();
+  if(!navigator.geolocation)return;
+  navigator.geolocation.getCurrentPosition(async p=>{
+    try{const r=await api('sky',{lat:p.coords.latitude,lng:p.coords.longitude});if(r.ok&&r.data.condition)applySky(r.data)}catch(e){}
+  },()=>{},{enableHighAccuracy:false,timeout:10000,maximumAge:1800000})}
+
 /* ---- iPhone app only: Apple push + automatic location during the asked window ---- */
 let watcherId=null,starting=false,trackUntil=0,pushReady=false;
 async function startTracking(until){
@@ -392,7 +484,8 @@ async function registerPush(){
   await PN.register()}catch(e){}}
 
 async function load(){const {data}=await api('state');S=data;const m=data.me;
-$('stats').textContent=data.players+' members, '+data.clock.matches+' sightings so far';
+$('members').textContent=data.players;
+$('stats').textContent=data.clock.matches+' sightings so far';
 $('join').style.display=m?'none':'block';$('app').style.display=m?'block':'none';
 if(m){
  const a=m.assignment;
@@ -406,7 +499,7 @@ if(m){
  if(m.pick_expired)notes+='<div class="card note"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
  $('notes').innerHTML=notes;
  $('sb').disabled=!m.can_send;
- $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Used for today. Picks reset at midnight Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at midnight Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
+ $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
  $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><p>Turn on notifications so you hear when you are picked, or asked to raise your hand.</p><button class="alt" onclick="enablePush()">Turn on notifications</button><div class="mut">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
  $('rec').textContent=data.clock.record?'Longest wait: '+fmt(data.clock.record):'';
  $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="mut">None yet. Be the first!</div>'}
@@ -422,7 +515,7 @@ const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getS
 if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(S.vapid)});
 await api('push/subscribe',{subscription:sub.toJSON()});$('msg').textContent='Notifications are on.';load()}catch(e){$('msg').textContent='Could not turn on notifications here.'}}
 if(!NATIVE&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
-load();setInterval(tick,1000);setInterval(()=>{if(!document.hidden)load()},15000);
+load();loadSky();setInterval(tick,1000);setInterval(()=>{if(!document.hidden)load()},15000);setInterval(()=>{if(!document.hidden)loadSky()},900000);
 </script></body></html>`;
 
 // ---------- server ----------
