@@ -33,6 +33,7 @@ async function init() {
   await sql`CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)`;
   await sql`CREATE TABLE IF NOT EXISTS draws (day TEXT PRIMARY KEY)`;
   await sql`CREATE TABLE IF NOT EXISTS picks (day TEXT NOT NULL, user_id INT NOT NULL, PRIMARY KEY (day, user_id))`;
+  await sql`ALTER TABLE matches ADD COLUMN IF NOT EXISTS city TEXT`;
   await sql`ALTER TABLE picks ADD COLUMN IF NOT EXISTS picked_ts TIMESTAMPTZ NOT NULL DEFAULT now()`;
 }
 for (let i = 0; ; i++) {
@@ -169,6 +170,38 @@ async function sky(lat: number, lng: number) {
   return v;
 }
 
+// ---------- city lookup (OpenStreetMap). Coordinates are rounded to ~1 km; only "City, ST" is kept. ----------
+async function cityOf(lat: number, lng: number): Promise<string | null> {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&addressdetails=1&lat=${lat.toFixed(2)}&lon=${lng.toFixed(2)}`, {
+      headers: { "user-agent": "RaiseYourRightHand/1.0 (https://raise.nearune.ai)", "accept-language": "en" },
+    });
+    if (!r.ok) return null;
+    const a = ((await r.json()) as any).address ?? {};
+    const city = a.city ?? a.town ?? a.village ?? a.hamlet ?? a.suburb ?? a.county;
+    if (!city) return null;
+    if (a.country_code === "us") {
+      const st = a["ISO3166-2-lvl4"] ? String(a["ISO3166-2-lvl4"]).split("-")[1] : a.state;
+      return st ? `${city}, ${st}` : String(city);
+    }
+    return a.country ? `${city}, ${a.country}` : String(city);
+  } catch { return null; }
+}
+let backfilling = false;
+async function backfillCities() { // fills in cities for sightings recorded without one, one per second
+  if (backfilling) return;
+  backfilling = true;
+  try {
+    const rows = await sql`SELECT id, lat, lng FROM matches WHERE city IS NULL AND lat IS NOT NULL ORDER BY id DESC LIMIT 10`;
+    for (const m of rows) {
+      const c = await cityOf(m.lat, m.lng);
+      if (c) await sql`UPDATE matches SET city=${c} WHERE id=${m.id}`;
+      await Bun.sleep(1100);
+    }
+  } catch (e) { console.error("backfill failed", e); }
+  backfilling = false;
+}
+
 // Daily lottery: the first request of each Pacific day picks PICK_PERCENT of members (at least 1)
 // who get to ask someone to raise their hand today. Returns true if this call ran the draw.
 async function ensureDraw(): Promise<boolean> {
@@ -223,11 +256,12 @@ async function state(uid: number | null) {
   const prev = await lastReset();
   const n = Number((await sql`SELECT COUNT(*) AS c FROM matches`)[0].c);
   const rec = (await sql`SELECT MAX(elapsed) AS m FROM matches`)[0].m;
-  const hist = await sql`SELECT ts, elapsed FROM matches ORDER BY id DESC LIMIT 10`;
+  const hist = await sql`SELECT ts, elapsed, city FROM matches ORDER BY id DESC LIMIT 10`;
+  if (hist.some((h: any) => !h.city)) void backfillCities();
   const players = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
   const out: any = {
     clock: { since: prev.toISOString(), matches: n, record: rec == null ? null : Number(rec) },
-    history: hist.map((h: any) => ({ ts: new Date(h.ts).toISOString(), elapsed: Number(h.elapsed) })),
+    history: hist.map((h: any) => ({ ts: new Date(h.ts).toISOString(), elapsed: Number(h.elapsed), city: h.city ?? null })),
     players, game_start: GAME_START, started: players >= GAME_START, vapid: VAPID.publicKey, pick_percent: PICK_PERCENT, respond_min: RESPOND_MIN, pick_window_min: PICK_WINDOW_MIN, me: null,
   };
   const u = await getUser(uid);
@@ -368,7 +402,8 @@ async function api(req: Request, path: string): Promise<Response> {
     const upd = await sql`UPDATE sends SET status='matched' WHERE id=${best.id} AND status IN ('pending','raised') RETURNING id`;
     if (!upd.length) return nomatch;
     const elapsed = (t.getTime() - prev.getTime()) / 1000;
-    await sql`INSERT INTO matches (send_id, spotter_id, ts, lat, lng, dist, elapsed) VALUES (${best.id}, ${u.id}, ${t}, ${c.lat}, ${c.lng}, ${bestD}, ${elapsed})`;
+    const mrow = await sql`INSERT INTO matches (send_id, spotter_id, ts, lat, lng, dist, elapsed) VALUES (${best.id}, ${u.id}, ${t}, ${c.lat}, ${c.lng}, ${bestD}, ${elapsed}) RETURNING id`;
+    void (async () => { const place = await cityOf(c.lat, c.lng); if (place) await sql`UPDATE matches SET city=${place} WHERE id=${mrow[0].id}`; })();
     void push(best.target_id, "You were spotted!", "Someone saw your raised hand. The clock just reset.");
     void push(best.sender_id, "Your raise was spotted!", "The person you picked was seen. The clock just reset.");
     return json({ matched: true, elapsed, message: "Match! The sighting is recorded and the clock has reset." });
@@ -466,6 +501,7 @@ const CAP=window.Capacitor;
 const NATIVE=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {ok:r.ok,data:await r.json()}}
 function fmt(s){s=Math.max(0,s);const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=Math.floor(s%60);return d+'d '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')}
+function esc(t){return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function two(n){return String(n).padStart(2,'0')}
 function pt(x){return new Date(x).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' PT'}
 function mmss(s){s=Math.max(0,Math.floor(s));return two(Math.floor(s/60))+':'+two(s%60)}
@@ -555,7 +591,7 @@ if(m){
  $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
  $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><b>Get notified</b><p>Turn on notifications so you hear when you are picked or asked to raise your hand.</p><button class="alt" style="margin-top:10px;font-size:16px;padding:12px" onclick="enablePush()">Turn on notifications</button><div class="small" style="margin-top:8px">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
  $('rec').textContent=data.clock.record?'Longest wait: '+fmt(data.clock.record):'';
- $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
+ $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+(h.city?'<div class="small">'+esc(h.city)+'</div>':'')+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
 else{$('assign').style.display='none';$('hero').style.display='flex'}
 tick()}
 async function joinNow(){await api('join',{});load()}
