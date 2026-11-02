@@ -652,7 +652,7 @@ const PRIVACY = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 <h2>Changes</h2>
 <p>If this policy changes, the updated version will be posted here with a new date.</p>
 <h2>Contact</h2>
-<p>Mark Berenstein, San Mateo, California. <a href="mailto:support@nearune.com">support@nearune.com</a></p>
+<p>Mark Berenstein, San Mateo, California. <a href="mailto:support@nearune.ai">support@nearune.ai</a></p>
 </main></body></html>`;
 const SUPPORT = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Support - Raise Your Right Hand</title><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#0f1630;color:#eef1ff;line-height:1.55}main{max-width:680px;margin:auto;padding:32px 22px 60px}h1{font-size:30px;letter-spacing:-.02em}h2{font-size:19px;margin-top:28px}a{color:#ffd166}.mut{color:#a9b2d6;font-size:14px}</style></head><body><main>
 <h1>Support</h1><p class="mut">Raise Your Right Hand</p>
@@ -664,7 +664,7 @@ const SUPPORT = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 <p><b>My sighting did not match.</b> The spotter must be within 100 meters of the asked member, and the asked member's location must be less than 5 minutes old. Make sure location is allowed for the app.</p>
 <p><b>Does the app track me all the time?</b> No. Location is shared only for the 20 minutes after you are asked, and when you tap "I saw a raised hand".</p>
 <h2>Contact</h2>
-<p>Email <a href="mailto:support@nearune.com">support@nearune.com</a> and we will reply as soon as we can. See also the <a href="/privacy">Privacy Policy</a>.</p>
+<p>Email <a href="mailto:support@nearune.ai">support@nearune.ai</a> and we will reply as soon as we can. See also the <a href="/privacy">Privacy Policy</a>.</p>
 </main></body></html>`;
 
 // ---------- server ----------

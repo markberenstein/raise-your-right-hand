@@ -19,4 +19,4 @@ Background location during the window, Apple push notifications, haptic feedback
 HOW TO REVIEW
 The game starts when 150 members have joined, so on a fresh install the main screen shows the live clock and member count. Demo mode: on the first screen, tap "App Review? Enter code", type APPLE-REVIEW, and tap Start demo. A bar of buttons (Waiting, Picked to ask, Asked to raise, Sighted, History) lets you see every screen without needing 150 members or a second device. Demo mode takes no real action and changes no data.
 
-No login is required. Contact: support@nearune.com
+No login is required. Contact: support@nearune.ai
