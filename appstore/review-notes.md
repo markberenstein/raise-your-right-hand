@@ -19,4 +19,7 @@ Background location during the window, Apple push notifications, haptic feedback
 HOW TO REVIEW
 The game starts when 150 members have joined, so on a fresh install the main screen shows the live clock and member count. Demo mode: on the first screen, tap "App Review? Enter code", type APPLE-REVIEW, and tap Start demo. A bar of buttons (Waiting, Picked to ask, Asked to raise, Sighted, History) lets you see every screen without needing 150 members or a second device. Demo mode takes no real action and changes no data.
 
+LAUNCH AREA
+The game is starting in the San Francisco Bay Area. When a new member taps Join, the app checks location once and does not store it; people outside the area see a friendly "not open in your area yet" message. App Review can use the demo code above to see every screen from anywhere.
+
 No login is required. Contact: support@nearune.ai

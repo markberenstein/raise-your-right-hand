@@ -21,6 +21,11 @@ const APNS_HOST = env.APNS_ENV === "sandbox" ? "https://api.sandbox.push.apple.c
 const WK_KEY = (env.WEATHERKIT_KEY ?? "").replace(/\\n/g, "\n");
 const WK_KEY_ID = env.WEATHERKIT_KEY_ID ?? "";
 const STORE_URL = env.STORE_URL ?? "https://apps.apple.com/app/id6829646358"; // App Store page for the short link /get
+// Launch area: new members must be inside this circle (default: 110 km around San Francisco) when they tap Join.
+const AREA_LAT = Number(env.AREA_LAT ?? 37.77);
+const AREA_LNG = Number(env.AREA_LNG ?? -122.42);
+const AREA_KM = Number(env.AREA_KM ?? 110);
+const AREA_ON = (env.AREA_ON ?? "1") !== "0";
 const REVIEW_CODE = (env.REVIEW_CODE ?? "APPLE-REVIEW").toUpperCase(); // lets App Review open a demo walkthrough
 const sql = new SQL(env.DATABASE_URL!);
 
@@ -300,6 +305,12 @@ async function api(req: Request, path: string): Promise<Response> {
 
   if (path === "/join") {
     if (await getUser(uid)) return json({ ok: true });
+    if (AREA_ON) { // the location is used for this check only and is never stored
+      const c = coords(body);
+      if (!c) return json({ ok: false, needs_location: true, error: "We need your location once to confirm you are in the San Francisco Bay Area." }, 400);
+      if (hav(c.lat, c.lng, AREA_LAT, AREA_LNG) / 1000 > AREA_KM)
+        return json({ ok: false, outside: true, error: "Raise Your Right Hand is starting in the San Francisco Bay Area." }, 403);
+    }
     const r = await sql`INSERT INTO users DEFAULT VALUES RETURNING id`;
     const id = r[0].id;
     // If today's draw already happened, a late joiner gets the same small chance as everyone else.
@@ -487,7 +498,8 @@ body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
 <div id="demobar" style="display:none;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0"><span class="pill small" style="width:100%;text-align:center">Demo mode: no real action is taken</span><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('wait')">Waiting</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('ask')">Picked to ask</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('raise')">Asked to raise</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('sight')">Sighted</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('history')">History</button></div>
 <div class="bottom">
 <div id="join" style="display:none"><button onclick="joinNow()">Join the experiment</button>
-<div class="small" style="text-align:center;margin-top:12px">No account. Your location is only used when you are asked.</div>
+<div id="joinmsg" class="card" style="display:none;margin-top:12px;background:rgba(255,255,255,.92);color:#14182b;-webkit-backdrop-filter:none;backdrop-filter:none"></div>
+<div class="small" style="text-align:center;margin-top:12px">Starting in the San Francisco Bay Area. No account needed. We check your location once when you join.</div>
 <div style="text-align:center;margin-top:14px"><a href="#" class="small" style="text-decoration:underline;color:inherit" onclick="document.getElementById('rcbox').style.display='block';return false">App Review? Enter code</a></div>
 <div id="rcbox" style="display:none;margin-top:10px"><input id="rc" placeholder="Review code" autocapitalize="characters" style="width:100%;padding:14px;border-radius:16px;border:0;font-size:17px;margin-bottom:8px"><button class="alt" onclick="unlockDemo()">Start demo</button><div class="small" id="rcmsg" style="text-align:center;margin-top:6px"></div></div></div>
 <div id="app" style="display:none">
@@ -604,7 +616,13 @@ if(m){
  $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+(h.city?'<div class="small">'+esc(h.city)+'</div>':'')+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
 else{$('assign').style.display='none';$('hero').style.display='flex'}
 tick()}
-async function joinNow(){if(DEMO)return;await api('join',{});load()}
+async function joinNow(){if(DEMO)return;
+ const jm=$('joinmsg');jm.style.display='block';jm.innerHTML='<p style="margin:0">Checking your location...</p>';
+ let c;try{c=await loc()}catch(e){jm.innerHTML='<b>Location needed</b><p>We check your location once to confirm you are in the San Francisco Bay Area. Please allow location access and try again.</p>';return}
+ const r=await api('join',c);
+ if(r.data&&r.data.outside){jm.innerHTML='<b>Not open in your area yet</b><p>Raise Your Right Hand is starting in the San Francisco Bay Area, so a raised hand can be spotted by someone nearby. We will open more areas as the group grows. Thanks for your interest!</p>';return}
+ if(!r.ok){jm.innerHTML='<p style="margin:0">'+esc((r.data&&r.data.error)||'Could not join. Please try again.')+'</p>';return}
+ jm.style.display='none';load()}
 async function unlockDemo(){const r=await api('review',{code:$('rc').value});
  if(r.data&&r.data.ok){DEMO=true;$('demobar').style.display='flex';demo('wait')}else $('rcmsg').textContent='That code is not valid.'}
 function demo(kind){
@@ -638,7 +656,7 @@ const PRIVACY = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 <h2>No account, no personal details</h2>
 <p>You do not create a username or password and you never give us your name, email address or phone number. When you tap Join, we create a random member number for your device. That number is the only thing that identifies you in the app.</p>
 <h2>What we collect</h2>
-<p><b>Location.</b> The app asks for your location in three situations. First, to show the sky (weather and time of day) where you are. For this we send your location rounded to about 11 km to Apple WeatherKit for one lookup; we do not store it. Second, when you tap "I saw a raised hand", we use your exact location at that moment to see whether an asked member was within 100 meters. Third, when you are asked to raise your right hand, the app shares your location for the next 20 minutes only, so a sighting can be matched. It stops automatically at the end of that window.</p>
+<p><b>Location.</b> The app asks for your location in four situations. First, when you tap Join, we check your location once to confirm you are in the San Francisco Bay Area, where the game is starting; we do not store it. Second, to show the sky (weather and time of day) where you are. For this we send your location rounded to about 11 km to Apple WeatherKit for one lookup; we do not store it. Third, when you tap "I saw a raised hand", we use your exact location at that moment to see whether an asked member was within 100 meters. Fourth, when you are asked to raise your right hand, the app shares your location for the next 20 minutes only, so a sighting can be matched. It stops automatically at the end of that window.</p>
 <p><b>Sightings.</b> When a sighting is confirmed we record the time, how long the clock had been running, the location of the spotter, and the city and state. Other members see only the time, the wait and the city and state.</p>
 <p><b>Notifications.</b> If you allow notifications, we keep your device's push token so we can tell you that you were picked or asked.</p>
 <p><b>Activity.</b> We record who was picked or asked (by member number) and the status of each request, to run the daily draw and the game.</p>
@@ -663,6 +681,7 @@ const SUPPORT = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 <p><b>Why am I never picked?</b> About 3.36% of members are picked each day, starting at 9:00 a.m. Pacific. Asking is open 9:00 a.m. to 6:00 p.m. Pacific. The game starts when 150 members have joined.</p>
 <p><b>I did not get a notification.</b> Open iPhone Settings, then Notifications, then Raise Your Right Hand, and make sure Allow Notifications is on.</p>
 <p><b>My sighting did not match.</b> The spotter must be within 100 meters of the asked member, and the asked member's location must be less than 5 minutes old. Make sure location is allowed for the app.</p>
+<p><b>Why can't I join?</b> The game is starting in the San Francisco Bay Area, so new members must be in the area when they join. We check your location once and do not store it. We will open more areas as the group grows.</p>
 <p><b>Does the app track me all the time?</b> No. Location is shared only for the 20 minutes after you are asked, and when you tap "I saw a raised hand".</p>
 <h2>Contact</h2>
 <p>Email <a href="mailto:support@nearune.ai">support@nearune.ai</a> and we will reply as soon as we can. See also the <a href="/privacy">Privacy Policy</a>.</p>
