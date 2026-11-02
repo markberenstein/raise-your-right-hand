@@ -12,7 +12,7 @@ workflows:
         BUNDLE_ID: "ai.nearune.raise"
         XCODE_PROJECT: "ios/App/App.xcodeproj"
         XCODE_SCHEME: "App"
-        APP_STORE_APPLE_ID: "REPLACE_WITH_APP_ID"   # the numeric Apple ID shown in App Store Connect > App Information
+        APP_STORE_APPLE_ID: "6829646358"   # Apple ID from App Store Connect > App Information
     scripts:
       - name: Install web packages
         script: npm ci
