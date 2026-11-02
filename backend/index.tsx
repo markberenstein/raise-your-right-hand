@@ -387,61 +387,105 @@ const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rec
 
 const PAGE = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f1220" media="(prefers-color-scheme: dark)"><meta name="theme-color" content="#f3f5fb" media="(prefers-color-scheme: light)"><meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#2f7fe0"><meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Raise Your Right Hand">
 <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg">
 <title>Raise Your Right Hand</title>
 <style>
-:root{color-scheme:dark light;--bg:#0f1220;--card:rgba(26,31,54,.82);--ink:#f2f4ff;--mut:#9aa3c7;--acc:#ffb347;--line:#2c3354;--noteb:#4a5280;--notebg:#232845;--btn:#222}
-@media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--card:rgba(255,255,255,.84);--ink:#14182b;--mut:#5b6385;--acc:#c46a00;--line:#dde1ee;--noteb:#c9cfe3;--notebg:#eef1fa;--btn:#ffffff}}
+*{box-sizing:border-box}
 html{min-height:100%}
-body[class*=sky-]{background-attachment:fixed;background-repeat:no-repeat;min-height:100vh}
-body.sky-clear{background-image:linear-gradient(#3b8de0,#a9d6ff)}
-body.sky-cloud{background-image:linear-gradient(#7d90a6,#cfd8e2)}
-body.sky-rain{background-image:linear-gradient(#3f4c5c,#7d8a99)}
-body.sky-storm{background-image:linear-gradient(#262d3a,#58626f)}
-body.sky-snow{background-image:linear-gradient(#aebccd,#eef3f8)}
-body.sky-fog{background-image:linear-gradient(#a3adb5,#dde1e4)}
+body{margin:auto;max-width:480px;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;font-family:-apple-system,"SF Pro Rounded",system-ui,sans-serif;color:#fff;padding:max(20px,env(safe-area-inset-top)) 22px max(24px,env(safe-area-inset-bottom));background:linear-gradient(#2f7fe0,#8cc8ff);background-attachment:fixed;background-repeat:no-repeat;-webkit-tap-highlight-color:transparent}
+@media (prefers-color-scheme:dark){body{background:linear-gradient(#070b24,#1d2757);background-attachment:fixed;background-repeat:no-repeat}}
+body.sky-clear{background-image:linear-gradient(#2f7fe0,#8cc8ff 65%,#ffd9a8)}
+body.sky-cloud{background-image:linear-gradient(#6f84a0,#cfd8e2)}
+body.sky-rain{background-image:linear-gradient(#36435a,#7d8a99)}
+body.sky-storm{background-image:linear-gradient(#1f2533,#58626f)}
+body.sky-snow{background-image:linear-gradient(#aebccd,#eef3f8);color:#14182b}
+body.sky-fog{background-image:linear-gradient(#a3adb5,#e3e6e8);color:#14182b}
 body.sky-night{background-image:radial-gradient(1.5px 1.5px at 12% 14%,#fff,transparent),radial-gradient(1.5px 1.5px at 38% 8%,#fff,transparent),radial-gradient(1px 1px at 63% 18%,#fff,transparent),radial-gradient(1.5px 1.5px at 85% 10%,#fff,transparent),radial-gradient(1px 1px at 24% 30%,#fff,transparent),radial-gradient(1px 1px at 74% 34%,#fff,transparent),linear-gradient(#070b24,#1d2757)}
-body[class*=sky-] h1{color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.45)}
-body.sky-snow h1,body.sky-fog h1{color:#14182b;text-shadow:none}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px;padding-top:max(16px,env(safe-area-inset-top));max-width:480px;margin:auto}
-h1{font-size:22px;margin:8px 0}.card{background:var(--card);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-radius:14px;padding:16px;margin:12px 0}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.clock{font-size:34px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
-.mut{color:var(--mut);font-size:14px}p{margin:6px 0}
-button{width:100%;padding:14px;margin:6px 0;border:0;border-radius:12px;font-size:17px;font-weight:600;background:var(--acc);color:var(--btn)}
-button.alt{background:var(--line);color:var(--ink)}button:disabled{background:var(--line);color:var(--mut);opacity:.75}.msg{margin-top:8px;font-size:14px}.msg:empty{display:none}
-.hot{border:2px solid var(--acc)}.note{border:1px solid var(--noteb);background:var(--notebg)}.row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-top:1px solid var(--line)}
+.top{display:flex;justify-content:space-between;gap:8px;font-size:15px;font-weight:600}
+.pill{background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);padding:7px 13px;border-radius:99px}
+body.sky-snow .pill,body.sky-fog .pill{background:rgba(20,24,43,.1)}
+.mid{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:24px 0}
+.lbl{font-size:14px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;opacity:.85}
+.big{font-size:clamp(52px,20vw,84px);font-weight:800;letter-spacing:-.04em;line-height:1;margin:14px 0 6px;font-variant-numeric:tabular-nums;white-space:nowrap;text-shadow:0 4px 30px rgba(0,0,0,.2)}
+.unit{font-size:20px;font-weight:600;opacity:.88}
+.sub{font-size:17px;opacity:.9;margin-top:22px;max-width:290px;line-height:1.35}
+.hand{font-size:88px;filter:drop-shadow(0 8px 20px rgba(0,0,0,.3))}
+h2{font-size:38px;font-weight:800;line-height:1.04;letter-spacing:-.03em;margin:14px 0 0}
+.ring{position:relative;width:220px;height:220px;margin:26px 0 8px}
+.ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring b{font-size:58px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.small{font-size:14px;opacity:.92;line-height:1.35;text-shadow:0 1px 6px rgba(0,0,0,.25)}
+body.sky-snow .small,body.sky-fog .small{text-shadow:none}
+.bottom{display:flex;flex-direction:column;gap:12px}
+button{width:100%;border:0;border-radius:22px;padding:18px;font-size:19px;font-weight:800;font-family:inherit;background:#fff;color:#111}
+button.alt{background:rgba(15,20,45,.3);color:#fff;-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);font-weight:700}
+button.gold{background:#ffd166;color:#3a2600}
+body.sky-snow button:not(.alt):not(.gold),body.sky-fog button:not(.alt):not(.gold){background:#14182b;color:#fff}
+body.sky-snow button.alt,body.sky-fog button.alt{background:rgba(20,24,43,.12);color:#14182b}
+button:active{transform:scale(.98)}
+.card{background:rgba(255,255,255,.2);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-radius:18px;padding:14px 16px;text-align:left;font-size:15px;line-height:1.35}
+body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
+.card b{font-size:16px}.card p{margin:6px 0 0}
+.notes{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.msg{font-size:14px;text-align:center}.msg:empty{display:none}
+.row{display:flex;justify-content:space-between;font-size:15px;padding:9px 0;border-top:1px solid rgba(255,255,255,.25)}
+.conf{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9}
+.conf span{position:absolute;top:-40px;font-size:30px;animation:fall 3s ease-in forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(360deg)}}
+.banner{position:fixed;left:0;right:0;top:38%;text-align:center;font-size:40px;font-weight:800;z-index:10;text-shadow:0 4px 30px rgba(0,0,0,.4);pointer-events:none}
 </style></head><body>
-<h1>&#9995; Raise Your Right Hand</h1>
-<div class="grid2"><div class="card"><div class="mut">Members</div><div class="clock" id="members">--</div></div>
-<div class="card"><div class="mut">Sightings</div><div class="clock" id="sightings">--</div></div></div>
-<div class="card"><div class="mut">Time since the last confirmed sighting</div>
-<div class="clock" id="clock">--</div></div>
-<div id="join" class="card" style="display:none">
-<p>A group of strangers. Each day a small, random few are picked to ask another member to raise their right hand straight up, wherever they are. How long until someone in the group sees it?</p>
-<button onclick="joinNow()">Join the experiment</button>
-<div class="mut">No username or password. Your location is only used to match a raise with a sighting.</div></div>
+<div class="top"><span class="pill">&#127757; <span id="members">--</span> in the group</span><span class="pill"><span id="sightings">--</span> sightings</span></div>
+<div class="mid" id="hero">
+<div class="lbl" id="lbl">Time since last sighting</div>
+<div class="big" id="clock">--</div>
+<div class="unit" id="unit"></div>
+<div class="sub" id="herosub"></div></div>
+<div class="mid" id="assign" style="display:none"></div>
+<div class="bottom">
+<div id="join" style="display:none"><button onclick="joinNow()">Join the experiment</button>
+<div class="small" style="text-align:center;margin-top:12px">No account. Your location is only used when you are asked.</div></div>
 <div id="app" style="display:none">
-<div id="assign"></div>
-<div id="notes"></div>
-<div class="card"><button id="sb" onclick="sendRaise()">Ask a random member to raise their right hand</button>
-<div class="mut" id="sinfo"></div></div>
-<div class="card"><button class="alt" onclick="act('spot')">I saw someone raise their right hand</button>
-<div class="mut">Counts only if an asked member was within 100 meters of you just now.</div></div>
-<div id="pushcard"></div><div class="msg" id="msg"></div>
-<div class="card"><b>Recent sightings</b><div class="mut" id="rec"></div><div id="hist"></div></div></div>
+<div class="notes" id="notes"></div>
+<div class="bottom">
+<button id="sb" class="gold" onclick="sendRaise()" style="display:none">Ask a random member to raise their right hand</button>
+<div class="small" id="sinfo" style="text-align:center"></div>
+<button id="spotb" onclick="act('spot')">&#128064; I saw a raised hand</button>
+<div class="small" style="text-align:center">Counts only if an asked member was within 100 meters of you just now.</div>
+<div id="pushcard"></div>
+<button class="alt" onclick="toggleHist()">Recent sightings</button>
+<div class="msg" id="msg"></div>
+<div id="histwrap" style="display:none"><div class="small" id="rec"></div><div id="hist"></div></div>
+</div></div></div>
 <script>
-let S=null;
+let S=null,prevMatches=null;
 const $=id=>document.getElementById(id);
 const CAP=window.Capacitor;
 const NATIVE=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
 async function api(path,body){const r=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {ok:r.ok,data:await r.json()}}
 function fmt(s){s=Math.max(0,s);const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=Math.floor(s%60);return d+'d '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(x).padStart(2,'0')}
+function two(n){return String(n).padStart(2,'0')}
 function pt(x){return new Date(x).toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' PT'}
-function tick(){if(S)$('clock').textContent=fmt((Date.now()-new Date(S.clock.since).getTime())/1000)}
+function mmss(s){s=Math.max(0,Math.floor(s));return two(Math.floor(s/60))+':'+two(s%60)}
+function tick(){if(!S)return;
+ const s=Math.max(0,(Date.now()-new Date(S.clock.since).getTime())/1000);
+ const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=Math.floor(s%60);
+ $('clock').textContent=d>0?d+'d '+two(h)+'h':two(h)+':'+two(m)+':'+two(x);
+ $('unit').textContent=d>0?two(m)+'m '+two(x)+'s and counting':(S.clock.record?'Longest streak: '+fmt(S.clock.record).replace(/:\d\d$/,''):'and counting');
+ const a=S.me&&S.me.assignment,rt=$('ringT');
+ if(a&&rt){const left=(new Date(a.status==='raised'&&a.spot_until?a.spot_until:a.expires).getTime()-Date.now())/1000;
+  rt.textContent=mmss(left);const tot=(a.status==='raised'?S.respond_min*0+300:S.respond_min*60);
+  const c=$('ringC');if(c)c.setAttribute('stroke-dashoffset',String(628.3*(1-Math.max(0,Math.min(1,left/tot)))))}}
 function urlB64(b){const p='='.repeat((4-b.length%4)%4);const r=atob((b+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)))}
+function toggleHist(){const w=$('histwrap');w.style.display=w.style.display==='none'?'block':'none'}
+function celebrate(){
+ try{if(CAP&&CAP.Plugins&&CAP.Plugins.Haptics)CAP.Plugins.Haptics.notification({type:'SUCCESS'});else if(navigator.vibrate)navigator.vibrate([120,60,120])}catch(e){}
+ const c=document.createElement('div');c.className='conf';const em=['&#127881;','&#9995;','&#10024;','&#127882;'];
+ for(let i=0;i<28;i++){const s=document.createElement('span');s.innerHTML=em[i%4];s.style.left=(Math.random()*95)+'%';s.style.animationDelay=(Math.random()*0.8)+'s';c.appendChild(s)}
+ const b=document.createElement('div');b.className='banner';b.textContent='Sighted! Clock reset.';
+ document.body.appendChild(c);document.body.appendChild(b);setTimeout(()=>{c.remove();b.remove()},4000)}
 
 /* ---- sky background: Apple WeatherKit for the viewer's place, clock-based if location is off ---- */
 function applySky(d){
@@ -485,26 +529,34 @@ async function registerPush(){
   PN.addListener('pushNotificationActionPerformed',()=>load());
   await PN.register()}catch(e){}}
 
+function ringHtml(){return '<div class="ring"><svg width="220" height="220" viewBox="0 0 220 220"><circle cx="110" cy="110" r="100" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="10"/><circle id="ringC" cx="110" cy="110" r="100" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-dasharray="628.3" stroke-dashoffset="0"/></svg><div class="in"><span class="lbl" style="font-size:12px">Time left</span><b id="ringT">--:--</b></div></div>'}
+
 async function load(){const {data}=await api('state');S=data;const m=data.me;
+if(prevMatches!==null&&data.clock.matches>prevMatches)celebrate();
+prevMatches=data.clock.matches;
 $('members').textContent=data.players;
 $('sightings').textContent=data.clock.matches;
 $('join').style.display=m?'none':'block';$('app').style.display=m?'block':'none';
+$('lbl').textContent=data.clock.matches?'Time since last sighting':'Nobody has seen it for';
+$('herosub').textContent=m?'Keep your eyes open. If you see a raised right hand, tell us.':'Each day a few strangers are picked to make someone raise their right hand. Will anyone see it?';
+let a=null;
 if(m){
- const a=m.assignment;
- if(a&&a.status==='pending'&&NATIVE)$('assign').innerHTML='<div class="card hot"><b>You were picked!</b><p>Hold your right hand straight up. Your location is shared with the group only until '+pt(a.expires)+', then it stops.</p><div class="mut">Asked at '+pt(a.asked_at)+'. Keep the app installed and allow location.</div></div>';
- else if(a&&a.status==='pending')$('assign').innerHTML='<div class="card hot"><b>You were picked!</b><p>Raise your right hand straight up, then tap the button.</p><button onclick="act(\'raise\')">I\'m raising my right hand now</button><div class="mut">Asked at '+pt(a.asked_at)+'. Answer by '+pt(a.expires)+'</div></div>';
- else if(a&&a.status==='raised')$('assign').innerHTML='<div class="card hot"><b>Hold it up!</b><p>Keep your right hand raised until '+pt(a.spot_until)+'.</p></div>';
- else $('assign').innerHTML='';
+ a=m.assignment;
+ if(a&&a.status==='pending'&&NATIVE)$('assign').innerHTML='<div class="hand">&#9995;</div><h2>You were picked.<br>Raise your right hand.</h2>'+ringHtml()+'<div class="small" style="max-width:280px">Hold it up where someone might see. We share your spot only until the timer ends, then stop.</div>';
+ else if(a&&a.status==='pending')$('assign').innerHTML='<div class="hand">&#9995;</div><h2>You were picked.<br>Raise your right hand.</h2>'+ringHtml()+'<button style="max-width:320px" onclick="act(\'raise\')">I\'m raising my right hand now</button><div class="small" style="margin-top:10px">Asked at '+pt(a.asked_at)+'. Answer by '+pt(a.expires)+'.</div>';
+ else if(a&&a.status==='raised')$('assign').innerHTML='<div class="hand">&#9995;</div><h2>Hold it up!</h2>'+ringHtml()+'<div class="small">Keep your right hand raised until '+pt(a.spot_until)+'.</div>';
+ $('assign').style.display=a?'flex':'none';$('hero').style.display=a?'none':'flex';
  if(NATIVE){registerPush();if(a)startTracking(a.expires);else stopTracking()}
  let notes='';
- if(m.missed&&!a)notes+='<div class="card note"><b>Missed it</b><p>You were asked to raise your right hand at '+pt(m.missed.asked_at)+'. Your '+data.respond_min+'-minute window expired at '+pt(m.missed.expired_at)+'.</p></div>';
- if(m.pick_expired)notes+='<div class="card note"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
+ if(m.missed&&!a)notes+='<div class="card"><b>Missed it</b><p>You were asked to raise your right hand at '+pt(m.missed.asked_at)+'. Your '+data.respond_min+'-minute window expired at '+pt(m.missed.expired_at)+'.</p></div>';
+ if(m.pick_expired)notes+='<div class="card"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
  $('notes').innerHTML=notes;
- $('sb').disabled=!m.can_send;
+ $('sb').style.display=m.can_send?'block':'none';
  $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
- $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><p>Turn on notifications so you hear when you are picked, or asked to raise your hand.</p><button class="alt" onclick="enablePush()">Turn on notifications</button><div class="mut">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
+ $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><b>Get notified</b><p>Turn on notifications so you hear when you are picked or asked to raise your hand.</p><button class="alt" style="margin-top:10px;font-size:16px;padding:12px" onclick="enablePush()">Turn on notifications</button><div class="small" style="margin-top:8px">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
  $('rec').textContent=data.clock.record?'Longest wait: '+fmt(data.clock.record):'';
- $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="mut">None yet. Be the first!</div>'}
+ $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
+else{$('assign').style.display='none';$('hero').style.display='flex'}
 tick()}
 async function joinNow(){await api('join',{});load()}
 function loc(){return new Promise((res,rej)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>rej(),{enableHighAccuracy:true,timeout:15000}):rej())}
