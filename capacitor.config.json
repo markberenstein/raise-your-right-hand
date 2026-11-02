@@ -1,0 +1,16 @@
+{
+  "appId": "ai.nearune.raise",
+  "appName": "Raise Your Right Hand",
+  "webDir": "www",
+  "server": {
+    "url": "https://raise.nearune.ai",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#2f7fe0"
+  },
+  "plugins": {
+    "PushNotifications": { "presentationOptions": ["badge", "sound", "alert"] }
+  }
+}

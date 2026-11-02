@@ -1,0 +1,41 @@
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 40
+    integrations:
+      app_store_connect: Raise Your Right Hand   # name of the App Store Connect API key you add in Codemagic
+    environment:
+      xcode: latest
+      node: 22
+      vars:
+        BUNDLE_ID: "ai.nearune.raise"
+        XCODE_PROJECT: "ios/App/App.xcodeproj"
+        XCODE_SCHEME: "App"
+        APP_STORE_APPLE_ID: "REPLACE_WITH_APP_ID"   # the numeric Apple ID shown in App Store Connect > App Information
+    scripts:
+      - name: Install web packages
+        script: npm ci
+      - name: Sync Capacitor
+        script: npx cap sync ios
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Set build number
+        script: |
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          NEXT=$((LATEST + 1))
+          cd ios/App && agvtool new-version -all "$NEXT"
+      - name: Build the app
+        script: |
+          xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
