@@ -582,7 +582,7 @@ $('members').textContent=data.players;
 $('sightings').textContent=data.clock.matches;
 $('join').style.display=m?'none':'block';$('app').style.display=m?'block':'none';
 $('lbl').textContent=data.clock.matches?'Time since last sighting':'Nobody has seen it for';
-$('herosub').textContent=m?'Keep your eyes open. If you see a raised right hand, tell us.':'Each day a few strangers are picked to make someone raise their right hand. Will anyone see it?';
+$('herosub').textContent=!data.started?data.players+' of '+data.game_start+' joined. The game starts at '+data.game_start+'. Invite friends!':m?'Keep your eyes open. If you see a raised right hand, tell us.':'Each day a few strangers are picked to make someone raise their right hand. Will anyone see it?';
 let a=null;
 if(m){
  a=m.assignment;
