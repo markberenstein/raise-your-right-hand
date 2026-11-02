@@ -19,4 +19,4 @@ Background location during the window, Apple push notifications, haptic feedback
 HOW TO REVIEW
 The game starts when 150 members have joined, so on a fresh install the main screen shows the live clock and member count. [REVIEW MODE: describe the review code or steps here once added.]
 
-No login is required. Contact: [support email]
+No login is required. Contact: support@nearune.com
