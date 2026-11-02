@@ -20,6 +20,7 @@ const APNS_HOST = env.APNS_ENV === "sandbox" ? "https://api.sandbox.push.apple.c
 // Apple WeatherKit (sky background): set WEATHERKIT_KEY (.p8 contents) and WEATHERKIT_KEY_ID as Railway variables
 const WK_KEY = (env.WEATHERKIT_KEY ?? "").replace(/\\n/g, "\n");
 const WK_KEY_ID = env.WEATHERKIT_KEY_ID ?? "";
+const REVIEW_CODE = (env.REVIEW_CODE ?? "APPLE-REVIEW").toUpperCase(); // lets App Review open a demo walkthrough
 const sql = new SQL(env.DATABASE_URL!);
 
 // ---------- database ----------
@@ -318,6 +319,9 @@ async function api(req: Request, path: string): Promise<Response> {
       return json({ error: "Sky unavailable." }, 502);
     }
   }
+  if (path === "/review") { // App Review demo code (the demo is client-side only and changes no data)
+    return json({ ok: typeof body?.code === "string" && body.code.trim().toUpperCase() === REVIEW_CODE });
+  }
   const u = await getUser(uid);
   if (!u) return json({ error: "Please join first." }, 401);
 
@@ -452,7 +456,7 @@ h2{font-size:38px;font-weight:800;line-height:1.04;letter-spacing:-.03em;margin:
 .ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
 .ring .in{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .ring b{font-size:58px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.small{font-size:14px;opacity:.92;line-height:1.35;text-shadow:0 1px 6px rgba(0,0,0,.25)}
+.small{font-size:14px;opacity:.96;line-height:1.35;text-shadow:0 1px 8px rgba(0,0,0,.45)}
 body.sky-snow .small,body.sky-fog .small{text-shadow:none}
 .bottom{display:flex;flex-direction:column;gap:12px}
 button{width:100%;border:0;border-radius:22px;padding:18px;font-size:19px;font-weight:800;font-family:inherit;background:#fff;color:#111}
@@ -479,23 +483,26 @@ body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
 <div class="unit" id="unit"></div>
 <div class="sub" id="herosub"></div></div>
 <div class="mid" id="assign" style="display:none"></div>
+<div id="demobar" style="display:none;gap:6px;flex-wrap:wrap;justify-content:center;margin:10px 0"><span class="pill small" style="width:100%;text-align:center">Demo mode: no real action is taken</span><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('wait')">Waiting</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('ask')">Picked to ask</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('raise')">Asked to raise</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('sight')">Sighted</button><button class="alt" style="width:auto;padding:8px 12px;font-size:14px" onclick="demo('history')">History</button></div>
 <div class="bottom">
 <div id="join" style="display:none"><button onclick="joinNow()">Join the experiment</button>
-<div class="small" style="text-align:center;margin-top:12px">No account. Your location is only used when you are asked.</div></div>
+<div class="small" style="text-align:center;margin-top:12px">No account. Your location is only used when you are asked.</div>
+<div style="text-align:center;margin-top:14px"><a href="#" class="small" style="text-decoration:underline;color:inherit" onclick="document.getElementById('rcbox').style.display='block';return false">App Review? Enter code</a></div>
+<div id="rcbox" style="display:none;margin-top:10px"><input id="rc" placeholder="Review code" autocapitalize="characters" style="width:100%;padding:14px;border-radius:16px;border:0;font-size:17px;margin-bottom:8px"><button class="alt" onclick="unlockDemo()">Start demo</button><div class="small" id="rcmsg" style="text-align:center;margin-top:6px"></div></div></div>
 <div id="app" style="display:none">
 <div class="notes" id="notes"></div>
 <div class="bottom">
 <button id="sb" class="gold" onclick="sendRaise()" style="display:none">Ask a random member to raise their right hand</button>
 <div class="small" id="sinfo" style="text-align:center"></div>
 <button id="spotb" onclick="act('spot')">&#128064; I saw a raised hand</button>
-<div class="small" style="text-align:center">Counts only if an asked member was within 100 meters of you just now.</div>
+<div class="small" id="hint" style="text-align:center">Counts only if an asked member was within 100 meters of you just now.</div>
 <div id="pushcard"></div>
-<button class="alt" onclick="toggleHist()">Recent sightings</button>
+<button class="alt" id="histb" onclick="toggleHist()">Recent sightings</button>
 <div class="msg" id="msg"></div>
 <div id="histwrap" style="display:none"><div class="small" id="rec"></div><div id="hist"></div></div>
 </div></div></div>
 <script>
-let S=null,prevMatches=null;
+let S=null,prevMatches=null,DEMO=false;
 const $=id=>document.getElementById(id);
 const CAP=window.Capacitor;
 const NATIVE=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
@@ -567,7 +574,8 @@ async function registerPush(){
 
 function ringHtml(){return '<div class="ring"><svg width="220" height="220" viewBox="0 0 220 220"><circle cx="110" cy="110" r="100" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="10"/><circle id="ringC" cx="110" cy="110" r="100" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-dasharray="628.3" stroke-dashoffset="0"/></svg><div class="in"><span class="lbl" style="font-size:12px">Time left</span><b id="ringT">--:--</b></div></div>'}
 
-async function load(){const {data}=await api('state');S=data;const m=data.me;
+async function load(){if(DEMO)return;const {data}=await api('state');render(data)}
+function render(data){S=data;const m=data.me;
 if(prevMatches!==null&&data.clock.matches>prevMatches)celebrate();
 prevMatches=data.clock.matches;
 $('members').textContent=data.players;
@@ -582,23 +590,38 @@ if(m){
  else if(a&&a.status==='pending')$('assign').innerHTML='<div class="hand">&#9995;</div><h2>You were picked.<br>Raise your right hand.</h2>'+ringHtml()+'<button style="max-width:320px" onclick="act(\'raise\')">I\'m raising my right hand now</button><div class="small" style="margin-top:10px">Asked at '+pt(a.asked_at)+'. Answer by '+pt(a.expires)+'.</div>';
  else if(a&&a.status==='raised')$('assign').innerHTML='<div class="hand">&#9995;</div><h2>Hold it up!</h2>'+ringHtml()+'<div class="small">Keep your right hand raised until '+pt(a.spot_until)+'.</div>';
  $('assign').style.display=a?'flex':'none';$('hero').style.display=a?'none':'flex';
- if(NATIVE){registerPush();if(a)startTracking(a.expires);else stopTracking()}
+ ['sinfo','spotb','hint','pushcard','histb'].forEach(i=>{$(i).style.display=a?'none':''});
+ if(NATIVE&&!DEMO){registerPush();if(a)startTracking(a.expires);else stopTracking()}
  let notes='';
  if(m.missed&&!a)notes+='<div class="card"><b>Missed it</b><p>You were asked to raise your right hand at '+pt(m.missed.asked_at)+'. Your '+data.respond_min+'-minute window expired at '+pt(m.missed.expired_at)+'.</p></div>';
  if(m.pick_expired)notes+='<div class="card"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
  $('notes').innerHTML=notes;
- $('sb').style.display=m.can_send?'block':'none';
+ $('sb').style.display=(m.can_send&&!a)?'block':'none';
  $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
  $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><b>Get notified</b><p>Turn on notifications so you hear when you are picked or asked to raise your hand.</p><button class="alt" style="margin-top:10px;font-size:16px;padding:12px" onclick="enablePush()">Turn on notifications</button><div class="small" style="margin-top:8px">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
  $('rec').textContent=data.clock.record?'Longest wait: '+fmt(data.clock.record):'';
  $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+(h.city?'<div class="small">'+esc(h.city)+'</div>':'')+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
 else{$('assign').style.display='none';$('hero').style.display='flex'}
 tick()}
-async function joinNow(){await api('join',{});load()}
+async function joinNow(){if(DEMO)return;await api('join',{});load()}
+async function unlockDemo(){const r=await api('review',{code:$('rc').value});
+ if(r.data&&r.data.ok){DEMO=true;$('demobar').style.display='flex';demo('wait')}else $('rcmsg').textContent='That code is not valid.'}
+function demo(kind){
+ const n=Date.now(),H=3600000;
+ const d={clock:{since:new Date(n-(2*86400+6*3600+41*60)*1000).toISOString(),matches:9,record:6*86400+7200},
+  history:[{ts:new Date(n-H*20).toISOString(),elapsed:2*86400+14400,city:'Oakland, CA'},{ts:new Date(n-H*90).toISOString(),elapsed:6*86400+7200,city:'Austin, TX'},{ts:new Date(n-H*250).toISOString(),elapsed:86400+30000,city:'Brooklyn, NY'}],
+  players:214,game_start:150,started:true,vapid:'',pick_percent:3.36,respond_min:20,pick_window_min:20,
+  me:{picked:false,used:false,can_send:false,missed:null,push:true,assignment:null,pick_expired:false,pick_until:null}};
+ if(kind==='ask'){d.me.picked=true;d.me.can_send=true;d.me.pick_until=new Date(n+14*60000).toISOString()}
+ if(kind==='raise')d.me.assignment={status:'pending',expires:new Date(n+17*60000).toISOString(),asked_at:new Date(n-3*60000).toISOString()};
+ render(d);
+ $('histwrap').style.display=kind==='history'?'block':'none';
+ if(kind==='sight')celebrate();
+ $('msg').textContent=''}
 function loc(){return new Promise((res,rej)=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),()=>rej(),{enableHighAccuracy:true,timeout:15000}):rej())}
-async function act(kind){$('msg').textContent='Getting your location...';let c;try{c=await loc()}catch(e){$('msg').textContent='Location is needed. Please allow it in your browser settings.';return}
+async function act(kind){if(DEMO){$('msg').textContent='Demo mode: no real action is taken.';return}$('msg').textContent='Getting your location...';let c;try{c=await loc()}catch(e){$('msg').textContent='Location is needed. Please allow it in your browser settings.';return}
 const {data}=await api(kind,c);$('msg').textContent=data.error||data.message||'';load()}
-async function sendRaise(){const {data}=await api('send',{});$('msg').textContent=data.error||data.message||'';load()}
+async function sendRaise(){if(DEMO){$('msg').textContent='Demo mode: no real action is taken.';return}const {data}=await api('send',{});$('msg').textContent=data.error||data.message||'';load()}
 async function enablePush(){try{if(!('serviceWorker' in navigator)||!('PushManager' in window)){$('msg').textContent='Notifications need the app added to your Home Screen first (iPhone) or a newer browser.';return}
 if(await Notification.requestPermission()!=='granted'){$('msg').textContent='Notifications were not allowed.';return}
 const reg=await navigator.serviceWorker.ready;let sub=await reg.pushManager.getSubscription();
@@ -607,6 +630,42 @@ await api('push/subscribe',{subscription:sub.toJSON()});$('msg').textContent='No
 if(!NATIVE&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
 load();loadSky();setInterval(tick,1000);setInterval(()=>{if(!document.hidden)load()},15000);setInterval(()=>{if(!document.hidden)loadSky()},900000);
 </script></body></html>`;
+
+const PRIVACY = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy Policy - Raise Your Right Hand</title><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#0f1630;color:#eef1ff;line-height:1.55}main{max-width:680px;margin:auto;padding:32px 22px 60px}h1{font-size:30px;letter-spacing:-.02em}h2{font-size:19px;margin-top:28px}a{color:#ffd166}.mut{color:#a9b2d6;font-size:14px}</style></head><body><main>
+<h1>Privacy Policy</h1><p class="mut">Raise Your Right Hand. Last updated November 2, 2026.</p>
+<p>Raise Your Right Hand is a group experiment. This page explains what the app collects, why, and what you can ask us to do. It is written to be read.</p>
+<h2>No account, no personal details</h2>
+<p>You do not create a username or password and you never give us your name, email address or phone number. When you tap Join, we create a random member number for your device. That number is the only thing that identifies you in the app.</p>
+<h2>What we collect</h2>
+<p><b>Location.</b> The app asks for your location in three situations. First, to show the sky (weather and time of day) where you are. For this we send your location rounded to about 11 km to Apple WeatherKit for one lookup; we do not store it. Second, when you tap "I saw a raised hand", we use your exact location at that moment to see whether an asked member was within 100 meters. Third, when you are asked to raise your right hand, the app shares your location for the next 20 minutes only, so a sighting can be matched. It stops automatically at the end of that window.</p>
+<p><b>Sightings.</b> When a sighting is confirmed we record the time, how long the clock had been running, the location of the spotter, and the city and state. Other members see only the time, the wait and the city and state.</p>
+<p><b>Notifications.</b> If you allow notifications, we keep your device's push token so we can tell you that you were picked or asked.</p>
+<p><b>Activity.</b> We record who was picked or asked (by member number) and the status of each request, to run the daily draw and the game.</p>
+<h2>How we use it</h2>
+<p>Only to run the game: pick members, deliver requests, match sightings, show the history and show the sky. We do not sell your data, share it with advertisers, or use it to track you across other apps or websites.</p>
+<h2>Who sees what</h2>
+<p>Other members never see your member number or your exact location. Our hosting provider (Railway) stores the data. City and state names are looked up with OpenStreetMap using coordinates rounded to about 1 km.</p>
+<h2>Your choices</h2>
+<p>You can turn off location or notifications at any time in iPhone Settings, and the app keeps working with fewer features. You can ask us to delete the data tied to your member number by contacting us; to help us find it, send the member number shown in the app, or tell us roughly when you joined.</p>
+<h2>Children</h2>
+<p>The app is not directed at children under 13, and we do not knowingly collect their information.</p>
+<h2>Changes</h2>
+<p>If this policy changes, the updated version will be posted here with a new date.</p>
+<h2>Contact</h2>
+<p>Mark Berenstein, San Mateo, California. <a href="mailto:support@nearune.com">support@nearune.com</a></p>
+</main></body></html>`;
+const SUPPORT = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Support - Raise Your Right Hand</title><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#0f1630;color:#eef1ff;line-height:1.55}main{max-width:680px;margin:auto;padding:32px 22px 60px}h1{font-size:30px;letter-spacing:-.02em}h2{font-size:19px;margin-top:28px}a{color:#ffd166}.mut{color:#a9b2d6;font-size:14px}</style></head><body><main>
+<h1>Support</h1><p class="mut">Raise Your Right Hand</p>
+<h2>How the game works</h2>
+<p>Each day a few random members are picked. A picked member gets one chance, within 20 minutes, to ask a random other member to raise their right hand. That member then has 20 minutes. If someone sees a raised right hand and taps "I saw a raised hand" within 100 meters, the sighting counts and the clock resets.</p>
+<h2>Common questions</h2>
+<p><b>Why am I never picked?</b> About 3.36% of members are picked each day, starting at 9:00 a.m. Pacific. Asking is open 9:00 a.m. to 6:00 p.m. Pacific. The game starts when 150 members have joined.</p>
+<p><b>I did not get a notification.</b> Open iPhone Settings, then Notifications, then Raise Your Right Hand, and make sure Allow Notifications is on.</p>
+<p><b>My sighting did not match.</b> The spotter must be within 100 meters of the asked member, and the asked member's location must be less than 5 minutes old. Make sure location is allowed for the app.</p>
+<p><b>Does the app track me all the time?</b> No. Location is shared only for the 20 minutes after you are asked, and when you tap "I saw a raised hand".</p>
+<h2>Contact</h2>
+<p>Email <a href="mailto:support@nearune.com">support@nearune.com</a> and we will reply as soon as we can. See also the <a href="/privacy">Privacy Policy</a>.</p>
+</main></body></html>`;
 
 // ---------- server ----------
 Bun.serve({
@@ -619,6 +678,8 @@ Bun.serve({
       if (p === "/sw.js") return new Response(SW, { headers: { "content-type": "application/javascript", "service-worker-allowed": "/", "cache-control": "no-cache" } });
       if (p === "/manifest.json") return json({ name: APP_NAME, short_name: "Right Hand", start_url: "/", display: "standalone", background_color: "#0f1220", theme_color: "#0f1220", icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }] });
       if (p === "/icon.svg") return new Response(ICON, { headers: { "content-type": "image/svg+xml" } });
+      if (p === "/privacy") return new Response(PRIVACY, { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (p === "/support") return new Response(SUPPORT, { headers: { "content-type": "text/html; charset=utf-8" } });
       if (p === "/") return new Response(PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" } });
       return json({ error: "Not found." }, 404);
     } catch (e) {
