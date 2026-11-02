@@ -6,6 +6,8 @@ workflows:
     integrations:
       app_store_connect: Raise Your Right Hand   # name of the App Store Connect API key you add in Codemagic
     environment:
+      groups:
+        - signing   # holds CERTIFICATE_PRIVATE_KEY (secure)
       xcode: latest
       node: 22
       vars:
@@ -21,7 +23,7 @@ workflows:
       - name: Set up code signing
         script: |
           keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create --certificate-key @env:CERTIFICATE_PRIVATE_KEY
           keychain add-certificates
           xcode-project use-profiles
       - name: Set build number
