@@ -6,8 +6,6 @@ workflows:
     integrations:
       app_store_connect: Raise Your Right Hand   # name of the App Store Connect API key you add in Codemagic
     environment:
-      groups:
-        - signing   # holds CERTIFICATE_PRIVATE_KEY (secure)
       xcode: latest
       node: 22
       vars:
