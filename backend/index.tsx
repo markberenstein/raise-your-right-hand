@@ -392,8 +392,8 @@ const PAGE = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-
 <link rel="manifest" href="/manifest.json"><link rel="icon" href="/icon.svg">
 <title>Raise Your Right Hand</title>
 <style>
-:root{color-scheme:dark light;--bg:#0f1220;--card:#1a1f36;--ink:#f2f4ff;--mut:#9aa3c7;--acc:#ffb347;--line:#2c3354;--noteb:#4a5280;--notebg:#232845;--btn:#222}
-@media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--card:#ffffff;--ink:#14182b;--mut:#5b6385;--acc:#c46a00;--line:#dde1ee;--noteb:#c9cfe3;--notebg:#eef1fa;--btn:#ffffff}}
+:root{color-scheme:dark light;--bg:#0f1220;--card:rgba(26,31,54,.82);--ink:#f2f4ff;--mut:#9aa3c7;--acc:#ffb347;--line:#2c3354;--noteb:#4a5280;--notebg:#232845;--btn:#222}
+@media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--card:rgba(255,255,255,.84);--ink:#14182b;--mut:#5b6385;--acc:#c46a00;--line:#dde1ee;--noteb:#c9cfe3;--notebg:#eef1fa;--btn:#ffffff}}
 html{min-height:100%}
 body[class*=sky-]{background-attachment:fixed;background-repeat:no-repeat;min-height:100vh}
 body.sky-clear{background-image:linear-gradient(#3b8de0,#a9d6ff)}
@@ -406,17 +406,19 @@ body.sky-night{background-image:radial-gradient(1.5px 1.5px at 12% 14%,#fff,tran
 body[class*=sky-] h1{color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.45)}
 body.sky-snow h1,body.sky-fog h1{color:#14182b;text-shadow:none}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px;padding-top:max(16px,env(safe-area-inset-top));max-width:480px;margin:auto}
-h1{font-size:22px;margin:8px 0}.card{background:var(--card);border-radius:14px;padding:16px;margin:12px 0}
+h1{font-size:22px;margin:8px 0}.card{background:var(--card);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-radius:14px;padding:16px;margin:12px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .clock{font-size:34px;font-weight:700;color:var(--acc);font-variant-numeric:tabular-nums}
 .mut{color:var(--mut);font-size:14px}p{margin:6px 0}
 button{width:100%;padding:14px;margin:6px 0;border:0;border-radius:12px;font-size:17px;font-weight:600;background:var(--acc);color:var(--btn)}
-button.alt{background:var(--line);color:var(--ink)}button:disabled{opacity:.5}.msg{margin-top:8px;font-size:14px;min-height:18px}
+button.alt{background:var(--line);color:var(--ink)}button:disabled{background:var(--line);color:var(--mut);opacity:.75}.msg{margin-top:8px;font-size:14px}.msg:empty{display:none}
 .hot{border:2px solid var(--acc)}.note{border:1px solid var(--noteb);background:var(--notebg)}.row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-top:1px solid var(--line)}
 </style></head><body>
 <h1>&#9995; Raise Your Right Hand</h1>
-<div class="card"><div class="mut">Members</div><div class="clock" id="members">--</div></div>
+<div class="grid2"><div class="card"><div class="mut">Members</div><div class="clock" id="members">--</div></div>
+<div class="card"><div class="mut">Sightings</div><div class="clock" id="sightings">--</div></div></div>
 <div class="card"><div class="mut">Time since the last confirmed sighting</div>
-<div class="clock" id="clock">--</div><div class="mut" id="stats"></div></div>
+<div class="clock" id="clock">--</div></div>
 <div id="join" class="card" style="display:none">
 <p>A group of strangers. Each day a small, random few are picked to ask another member to raise their right hand straight up, wherever they are. How long until someone in the group sees it?</p>
 <button onclick="joinNow()">Join the experiment</button>
@@ -485,7 +487,7 @@ async function registerPush(){
 
 async function load(){const {data}=await api('state');S=data;const m=data.me;
 $('members').textContent=data.players;
-$('stats').textContent=data.clock.matches+' sightings so far';
+$('sightings').textContent=data.clock.matches;
 $('join').style.display=m?'none':'block';$('app').style.display=m?'block':'none';
 if(m){
  const a=m.assignment;
