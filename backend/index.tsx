@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 
 const env = Bun.env;
 const APP_NAME = "Raise Your Right Hand";
-const MAX_METERS = Number(env.MAX_METERS ?? 100); // spotter must be this close to the asked member
+const MAX_METERS = Number(env.MAX_METERS ?? 50); // spotter must be this close to the asked member
 const WINDOW_MIN = Number(env.WINDOW_MIN ?? 5); // asked member's last known location must be at most this old
 const RESPOND_MIN = Number(env.RESPOND_MIN ?? 20); // how long an asked member is "on the clock" (and tracked)
 const PICK_WINDOW_MIN = Number(env.PICK_WINDOW_MIN ?? 20); // how long a picked member has to use their chance to ask
@@ -534,7 +534,7 @@ body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
 <button id="sb" class="gold" onclick="sendRaise()" style="display:none">Ask a random member to raise their right hand</button>
 <div class="small" id="sinfo" style="text-align:center"></div>
 <button id="spotb" onclick="act('spot')">&#128064; I saw a raised hand</button>
-<div class="small" id="hint" style="text-align:center">Counts only if an asked member was within 100 meters of you just now.</div>
+<div class="small" id="hint" style="text-align:center">Counts only if an asked member was within 50 meters of you just now.</div>
 <div id="pushcard"></div>
 <button class="alt" id="histb" onclick="toggleHist()">Recent sightings</button>
 <div class="msg" id="msg"></div>
@@ -637,7 +637,7 @@ if(m){
  let notes='';
  if(m.missed&&!a)notes+='<div class="card"><b>Missed it</b><p>You were asked to raise your right hand at '+pt(m.missed.asked_at)+'. Your '+data.respond_min+'-minute window expired at '+pt(m.missed.expired_at)+'.</p></div>';
  if(m.pick_expired)notes+='<div class="card"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
- if(m.review)notes='<div class="card"><b>Review test mode</b><p>This device is picked. Do the same on a second device (App Review, Live test). Here, tap Ask. The other device shows a countdown: allow location there and hold your right hand up (tap I am raising my right hand now if that button shows). Then tap I saw a raised hand here, within 100 meters. Nothing counts in the public clock.</p></div>'+notes;
+ if(m.review)notes='<div class="card"><b>Review test mode</b><p>This device is picked. Do the same on a second device (App Review, Live test). Here, tap Ask. The other device shows a countdown: allow location there and hold your right hand up (tap I am raising my right hand now if that button shows). Then tap I saw a raised hand here, within 50 meters. Nothing counts in the public clock.</p></div>'+notes;
  $('notes').innerHTML=notes;
  $('sb').style.display=(m.can_send&&!a)?'block':'none';
  $('sinfo').textContent=m.review?'Review test: you are picked. Tap Ask above.':m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
@@ -688,7 +688,7 @@ const PRIVACY = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 <h2>No account, no personal details</h2>
 <p>You do not create a username or password and you never give us your name, email address or phone number. When you tap Join, we create a random member number for your device. That number is the only thing that identifies you in the app.</p>
 <h2>What we collect</h2>
-<p><b>Location.</b> The app asks for your location in four situations. First, when you tap Join, we check your location once to confirm you are in the San Francisco Bay Area, where the game is starting; we do not store it. Second, to show the sky (weather and time of day) where you are. For this we send your location rounded to about 11 km to Apple WeatherKit for one lookup; we do not store it. Third, when you tap "I saw a raised hand", we use your exact location at that moment to see whether an asked member was within 100 meters. Fourth, when you are asked to raise your right hand, the app shares your location for the next 20 minutes only, so a sighting can be matched. It stops automatically at the end of that window.</p>
+<p><b>Location.</b> The app asks for your location in four situations. First, when you tap Join, we check your location once to confirm you are in the San Francisco Bay Area, where the game is starting; we do not store it. Second, to show the sky (weather and time of day) where you are. For this we send your location rounded to about 11 km to Apple WeatherKit for one lookup; we do not store it. Third, when you tap "I saw a raised hand", we use your exact location at that moment to see whether an asked member was within 50 meters. Fourth, when you are asked to raise your right hand, the app shares your location for the next 20 minutes only, so a sighting can be matched. It stops automatically at the end of that window.</p>
 <p><b>Sightings.</b> When a sighting is confirmed we record the time, how long the clock had been running, the location of the spotter, and the city and state. Other members see only the time, the wait and the city and state.</p>
 <p><b>Notifications.</b> If you allow notifications, we keep your device's push token so we can tell you that you were picked or asked.</p>
 <p><b>Activity.</b> We record who was picked or asked (by member number) and the status of each request, to run the daily draw and the game.</p>
@@ -708,11 +708,11 @@ const PRIVACY = String.raw`<!doctype html><html lang="en"><head><meta charset="u
 const SUPPORT = String.raw`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Support - Raise Your Right Hand</title><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:#0f1630;color:#eef1ff;line-height:1.55}main{max-width:680px;margin:auto;padding:32px 22px 60px}h1{font-size:30px;letter-spacing:-.02em}h2{font-size:19px;margin-top:28px}a{color:#ffd166}.mut{color:#a9b2d6;font-size:14px}</style></head><body><main>
 <h1>Support</h1><p class="mut">Raise Your Right Hand</p>
 <h2>How the game works</h2>
-<p>Each day a few random members are picked. A picked member gets one chance, within 20 minutes, to ask a random other member to raise their right hand. That member then has 20 minutes. If someone sees a raised right hand and taps "I saw a raised hand" within 100 meters, the sighting counts and the clock resets.</p>
+<p>Each day a few random members are picked. A picked member gets one chance, within 20 minutes, to ask a random other member to raise their right hand. That member then has 20 minutes. If someone sees a raised right hand and taps "I saw a raised hand" within 50 meters, the sighting counts and the clock resets.</p>
 <h2>Common questions</h2>
 <p><b>Why am I never picked?</b> About 3.36% of members are picked each day, starting at 9:00 a.m. Pacific. Asking is open 9:00 a.m. to 6:00 p.m. Pacific. The game starts when 150 members have joined.</p>
 <p><b>I did not get a notification.</b> Open iPhone Settings, then Notifications, then Raise Your Right Hand, and make sure Allow Notifications is on.</p>
-<p><b>My sighting did not match.</b> The spotter must be within 100 meters of the asked member, and the asked member's location must be less than 5 minutes old. Make sure location is allowed for the app.</p>
+<p><b>My sighting did not match.</b> The spotter must be within 50 meters of the asked member, and the asked member's location must be less than 5 minutes old. Make sure location is allowed for the app.</p>
 <p><b>Why can't I join?</b> The game is starting in the San Francisco Bay Area, so new members must be in the area when they join. We check your location once and do not store it. We will open more areas as the group grows.</p>
 <p><b>Does the app track me all the time?</b> No. Location is shared only for the 20 minutes after you are asked, and when you tap "I saw a raised hand".</p>
 <h2>Contact</h2>
