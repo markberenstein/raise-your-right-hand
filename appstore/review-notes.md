@@ -9,6 +9,7 @@ LOCATION
 - When In Use: the sky background (weather and time of day at the user's place) and the "I saw a raised hand" button.
 - Always/background: used ONLY for the 20 minutes after a member is asked to raise their hand, so a spotter can be matched. It starts automatically when they are asked and stops automatically when the 20 minutes end. The app does not track location at any other time. A visible reminder is shown while it is active.
 - Location is never sold or shared with third parties. Only the city and state of a sighting are shown to other members.
+- Users never see another member's location. The server compares locations privately only to decide whether a sighting is within 50 meters.
 
 NOTIFICATIONS
 Used to tell a member that they were picked, or were asked to raise their hand.
