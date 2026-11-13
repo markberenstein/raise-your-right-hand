@@ -33,6 +33,7 @@ const sql = new SQL(env.DATABASE_URL!);
 async function init() {
   await sql`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, created TIMESTAMPTZ NOT NULL DEFAULT now(), last_seen TIMESTAMPTZ NOT NULL DEFAULT now(), push_sub TEXT)`;
   await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS apns_token TEXT`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_review BOOLEAN NOT NULL DEFAULT false`; // App Review test members: kept out of the real game
   await sql`CREATE TABLE IF NOT EXISTS sends (id SERIAL PRIMARY KEY, sender_id INT NOT NULL, target_id INT NOT NULL, day TEXT NOT NULL, ts TIMESTAMPTZ NOT NULL DEFAULT now(), expires_ts TIMESTAMPTZ NOT NULL, status TEXT NOT NULL, raised_ts TIMESTAMPTZ, lat DOUBLE PRECISION, lng DOUBLE PRECISION, acc DOUBLE PRECISION)`;
   await sql`CREATE TABLE IF NOT EXISTS pings (id SERIAL PRIMARY KEY, send_id INT NOT NULL, ts TIMESTAMPTZ NOT NULL DEFAULT now(), lat DOUBLE PRECISION NOT NULL, lng DOUBLE PRECISION NOT NULL, acc DOUBLE PRECISION)`;
   await sql`CREATE INDEX IF NOT EXISTS pings_send_ts ON pings (send_id, ts DESC)`;
@@ -214,11 +215,11 @@ async function backfillCities() { // fills in cities for sightings recorded with
 async function ensureDraw(): Promise<boolean> {
   const day = ptDay();
   // The game has not started yet: nobody is picked until GAME_START members have joined.
-  if (Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c) < GAME_START) return false;
+  if (Number((await sql`SELECT COUNT(*) AS c FROM users WHERE NOT is_review`)[0].c) < GAME_START) return false;
   if (!inAskHours()) return false; // picks go out once the day's asking hours open
   const claimed = await sql`INSERT INTO draws (day) VALUES (${day}) ON CONFLICT DO NOTHING RETURNING day`;
   if (!claimed.length) return false;
-  const ids: number[] = (await sql`SELECT id FROM users`).map((x: any) => x.id);
+  const ids: number[] = (await sql`SELECT id FROM users WHERE NOT is_review`).map((x: any) => x.id);
   if (!ids.length) { await sql`DELETE FROM draws WHERE day=${day}`; return false; }
   for (let i = ids.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -248,7 +249,9 @@ async function getUser(uid: number | null) {
   if (!uid) return null;
   return (await sql`SELECT * FROM users WHERE id=${uid}`)[0] ?? null;
 }
-async function pickInfo(uid: number) {
+async function pickInfo(uid: number, review = false) {
+  // App Review test members are always picked, with a fresh window each time they look.
+  if (review) return { until: new Date(Date.now() + PICK_WINDOW_MIN * 60000), expired: false };
   const pk = (await sql`SELECT picked_ts FROM picks WHERE day=${ptDay()} AND user_id=${uid}`)[0];
   if (!pk) return null;
   const until = new Date(new Date(pk.picked_ts).getTime() + PICK_WINDOW_MIN * 60000);
@@ -265,7 +268,7 @@ async function state(uid: number | null) {
   const rec = (await sql`SELECT MAX(elapsed) AS m FROM matches`)[0].m;
   const hist = await sql`SELECT ts, elapsed, city FROM matches ORDER BY id DESC LIMIT 10`;
   if (hist.some((h: any) => !h.city)) void backfillCities();
-  const players = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
+  const players = Number((await sql`SELECT COUNT(*) AS c FROM users WHERE NOT is_review`)[0].c);
   const out: any = {
     clock: { since: prev.toISOString(), matches: n, record: rec == null ? null : Number(rec) },
     history: hist.map((h: any) => ({ ts: new Date(h.ts).toISOString(), elapsed: Number(h.elapsed), city: h.city ?? null })),
@@ -284,13 +287,15 @@ async function state(uid: number | null) {
     const last = (await sql`SELECT status, ts, expires_ts FROM sends WHERE target_id=${u.id} ORDER BY id DESC LIMIT 1`)[0];
     const missed = last && last.status === "expired" && new Date(last.expires_ts).getTime() > Date.now() - 86400000
       ? { asked_at: new Date(last.ts).toISOString(), expired_at: new Date(last.expires_ts).toISOString() } : null;
-    const pk = await pickInfo(u.id);
-    const used = await usedToday(u.id);
+    const rv = !!u.is_review;
+    const pk = await pickInfo(u.id, rv);
+    const used = rv ? false : await usedToday(u.id);
+    if (rv) out.started = true; // review test members can always try the live flow
     out.me = {
-      picked: !!pk, used,
+      picked: !!pk, used, review: rv,
       pick_until: pk ? pk.until.toISOString() : null,
       pick_expired: !!pk && pk.expired && !used,
-      can_send: players >= GAME_START && inAskHours() && !!pk && !pk.expired && !used,
+      can_send: rv ? true : players >= GAME_START && inAskHours() && !!pk && !pk.expired && !used,
       missed, push: !!u.push_sub || !!u.apns_token, assignment,
     };
   }
@@ -315,7 +320,7 @@ async function api(req: Request, path: string): Promise<Response> {
     const id = r[0].id;
     // If today's draw already happened, a late joiner gets the same small chance as everyone else.
     const ranDraw = await ensureDraw();
-    const joined = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
+    const joined = Number((await sql`SELECT COUNT(*) AS c FROM users WHERE NOT is_review`)[0].c);
     if (!ranDraw && joined >= GAME_START && inAskHours() && Math.random() * 100 < PICK_PERCENT) {
       await sql`INSERT INTO picks (day, user_id, picked_ts) VALUES (${ptDay()}, ${id}, ${new Date()}) ON CONFLICT DO NOTHING`;
     }
@@ -331,8 +336,14 @@ async function api(req: Request, path: string): Promise<Response> {
       return json({ error: "Sky unavailable." }, 502);
     }
   }
-  if (path === "/review") { // App Review demo code (the demo is client-side only and changes no data)
-    return json({ ok: typeof body?.code === "string" && body.code.trim().toUpperCase() === REVIEW_CODE });
+  if (path === "/review") { // App Review code: the demo is client-side only; "live" makes this device a review test member
+    const ok = typeof body?.code === "string" && body.code.trim().toUpperCase() === REVIEW_CODE;
+    if (!ok) return json({ ok: false });
+    if (!body?.live) return json({ ok: true });
+    const cur = await getUser(uid);
+    if (cur) { await sql`UPDATE users SET is_review=true WHERE id=${cur.id}`; return json({ ok: true, live: true }); }
+    const r = await sql`INSERT INTO users (is_review) VALUES (true) RETURNING id`;
+    return json({ ok: true, live: true }, 200, { "set-cookie": sessionCookie(r[0].id) });
   }
   const u = await getUser(uid);
   if (!u) return json({ error: "Please join first." }, 401);
@@ -364,7 +375,16 @@ async function api(req: Request, path: string): Promise<Response> {
 
   if (path === "/send") { // button 1: ask a random other member to raise their right hand
     await sweep();
-    const total = Number((await sql`SELECT COUNT(*) AS c FROM users`)[0].c);
+    if (u.is_review) { // App Review live test: ask another review device, no game rules, never touches real members
+      const recent = new Date(Date.now() - 10 * 60000);
+      const rc = await sql`SELECT id FROM users WHERE is_review AND id<>${u.id} AND last_seen>=${recent} AND id NOT IN (SELECT target_id FROM sends WHERE status IN ('pending','raised'))`;
+      if (!rc.length) return json({ error: "Review test: open the app on a second device, tap App Review, enter the code and choose Live test. Then tap Ask again." }, 400);
+      const t = rc[Math.floor(Math.random() * rc.length)].id;
+      await sql`INSERT INTO sends (sender_id, target_id, day, expires_ts, status) VALUES (${u.id}, ${t}, ${ptDay()}, ${new Date(Date.now() + RESPOND_MIN * 60000)}, 'pending')`;
+      void push(t, "Raise your right hand!", `Review test: hold your right hand up for the next ${RESPOND_MIN} minutes.`, true);
+      return json({ ok: true, message: "Sent to your other review device. Raise your hand there, then tap I saw a raised hand here." });
+    }
+    const total = Number((await sql`SELECT COUNT(*) AS c FROM users WHERE NOT is_review`)[0].c);
     if (total < GAME_START) return json({ error: `The game starts when ${GAME_START} members have joined.` }, 400);
     if (!inAskHours()) return json({ error: "Asking is open from 9:00 a.m. to 6:00 p.m. Pacific." }, 400);
     const pk = await pickInfo(u.id);
@@ -372,7 +392,7 @@ async function api(req: Request, path: string): Promise<Response> {
     if (await usedToday(u.id)) return json({ error: "You've used today's chance. It resets at 9:00 a.m. Pacific." }, 400);
     if (pk.expired) return json({ error: `Your ${PICK_WINDOW_MIN}-minute window to ask expired at ${ptTime(pk.until)}.` }, 400);
     const seen = new Date(Date.now() - 120000);
-    const cands = await sql`SELECT id FROM users WHERE id<>${u.id} AND (push_sub IS NOT NULL OR apns_token IS NOT NULL OR last_seen>=${seen}) AND id NOT IN (SELECT target_id FROM sends WHERE status IN ('pending','raised'))`;
+    const cands = await sql`SELECT id FROM users WHERE NOT is_review AND id<>${u.id} AND (push_sub IS NOT NULL OR apns_token IS NOT NULL OR last_seen>=${seen}) AND id NOT IN (SELECT target_id FROM sends WHERE status IN ('pending','raised'))`;
     if (!cands.length) return json({ error: "No one else can be reached right now. Try again a bit later." }, 400);
     const target = cands[Math.floor(Math.random() * cands.length)].id;
     await sql`INSERT INTO sends (sender_id, target_id, day, expires_ts, status) VALUES (${u.id}, ${target}, ${ptDay()}, ${new Date(Date.now() + RESPOND_MIN * 60000)}, 'pending')`;
@@ -402,17 +422,24 @@ async function api(req: Request, path: string): Promise<Response> {
     const cut = new Date(Date.now() - WINDOW_MIN * 60000);
     // Every asked member who is still inside their window and reported a location in the last WINDOW_MIN minutes.
     const rows = await sql`
-      SELECT s.id, s.sender_id, s.target_id, p.lat AS plat, p.lng AS plng
+      SELECT s.id, s.sender_id, s.target_id, p.lat AS plat, p.lng AS plng, su.is_review AS rev
       FROM sends s
+      JOIN users su ON su.id=s.sender_id
       JOIN LATERAL (SELECT lat, lng FROM pings WHERE send_id=s.id AND ts>=${cut} ORDER BY ts DESC LIMIT 1) p ON true
-      WHERE s.status IN ('pending','raised') AND s.target_id<>${u.id} AND s.sender_id<>${u.id}`;
+      WHERE s.status IN ('pending','raised') AND s.target_id<>${u.id}`;
     let best: any = null, bestD = Infinity;
-    for (const r of rows) {
+    // Review test members only match each other (and may spot their own ask); real members never match review asks.
+    for (const r of rows.filter((x: any) => !!x.rev === !!u.is_review && (u.is_review || x.sender_id !== u.id))) {
       const d = hav(c.lat, c.lng, r.plat, r.plng);
       if (d <= MAX_METERS && d < bestD) { best = r; bestD = d; }
     }
     const nomatch = json({ matched: false, message: `No match. No asked member was within ${MAX_METERS} meters of you just now.` });
     if (!best) return nomatch;
+    if (best.rev) { // review test: show the match, but leave the public clock and history alone
+      const ru = await sql`UPDATE sends SET status='matched' WHERE id=${best.id} AND status IN ('pending','raised') RETURNING id`;
+      if (!ru.length) return nomatch;
+      return json({ matched: true, review: true, message: "Match! (Review test: this sighting is not counted in the public clock.)" });
+    }
     const prev = await lastReset();
     const t = new Date();
     const upd = await sql`UPDATE sends SET status='matched' WHERE id=${best.id} AND status IN ('pending','raised') RETURNING id`;
@@ -500,8 +527,7 @@ body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
 <div id="join" style="display:none"><button onclick="joinNow()">Join the experiment</button>
 <div id="joinmsg" class="card" style="display:none;margin-top:12px;background:rgba(255,255,255,.92);color:#14182b;-webkit-backdrop-filter:none;backdrop-filter:none"></div>
 <div class="small" style="text-align:center;margin-top:12px">Starting in the San Francisco Bay Area. No account needed. We check your location once when you join.</div>
-<div style="text-align:center;margin-top:14px"><a href="#" class="small" style="text-decoration:underline;color:inherit" onclick="document.getElementById('rcbox').style.display='block';return false">App Review? Enter code</a></div>
-<div id="rcbox" style="display:none;margin-top:10px"><input id="rc" placeholder="Review code" autocapitalize="characters" style="width:100%;padding:14px;border-radius:16px;border:0;font-size:17px;margin-bottom:8px"><button class="alt" onclick="unlockDemo()">Start demo</button><div class="small" id="rcmsg" style="text-align:center;margin-top:6px"></div></div></div>
+</div>
 <div id="app" style="display:none">
 <div class="notes" id="notes"></div>
 <div class="bottom">
@@ -513,7 +539,10 @@ body.sky-snow .card,body.sky-fog .card{background:rgba(255,255,255,.6)}
 <button class="alt" id="histb" onclick="toggleHist()">Recent sightings</button>
 <div class="msg" id="msg"></div>
 <div id="histwrap" style="display:none"><div class="small" id="rec"></div><div id="hist"></div></div>
-</div></div></div>
+</div></div>
+<div id="rcwrap"><div style="text-align:center;margin-top:14px"><a href="#" class="small" style="text-decoration:underline;color:inherit" onclick="document.getElementById('rcbox').style.display='block';return false">App Review? Enter code</a></div>
+<div id="rcbox" style="display:none;margin-top:10px"><input id="rc" placeholder="Review code" autocapitalize="characters" style="width:100%;padding:14px;border-radius:16px;border:0;font-size:17px;margin-bottom:8px"><button class="alt" onclick="unlockDemo()">Start demo (screens only)</button><button class="alt" style="margin-top:8px" onclick="reviewLive()">Live test with two devices</button><div class="small" style="text-align:center;margin-top:6px">Live test: do this on both devices, then tap Ask on one. Nothing counts in the public clock.</div><div class="small" id="rcmsg" style="text-align:center;margin-top:6px"></div></div></div>
+</div>
 <script>
 let S=null,prevMatches=null,DEMO=false;
 const $=id=>document.getElementById(id);
@@ -608,9 +637,10 @@ if(m){
  let notes='';
  if(m.missed&&!a)notes+='<div class="card"><b>Missed it</b><p>You were asked to raise your right hand at '+pt(m.missed.asked_at)+'. Your '+data.respond_min+'-minute window expired at '+pt(m.missed.expired_at)+'.</p></div>';
  if(m.pick_expired)notes+='<div class="card"><b>Chance expired</b><p>You were picked today, but your '+data.pick_window_min+'-minute window to ask a random member expired at '+pt(m.pick_until)+'.</p></div>';
+ if(m.review)notes='<div class="card"><b>Review test mode</b><p>This device is picked. Do the same on a second device (App Review, Live test). Here, tap Ask. The other device shows a countdown: allow location there and hold your right hand up (tap I am raising my right hand now if that button shows). Then tap I saw a raised hand here, within 100 meters. Nothing counts in the public clock.</p></div>'+notes;
  $('notes').innerHTML=notes;
  $('sb').style.display=(m.can_send&&!a)?'block':'none';
- $('sinfo').textContent=m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
+ $('sinfo').textContent=m.review?'Review test: you are picked. Tap Ask above.':m.can_send?'You were picked today! Ask before '+pt(m.pick_until)+'.':m.used?'Picks reset at 9:00 a.m. Pacific.':m.pick_expired?'Your window to ask has passed. Picks reset at 9:00 a.m. Pacific.':'Not picked today. About '+data.pick_percent+'% of members are picked each day.';
  $('pushcard').innerHTML=(m.push||NATIVE)?'':'<div class="card"><b>Get notified</b><p>Turn on notifications so you hear when you are picked or asked to raise your hand.</p><button class="alt" style="margin-top:10px;font-size:16px;padding:12px" onclick="enablePush()">Turn on notifications</button><div class="small" style="margin-top:8px">On iPhone, first tap Share, then Add to Home Screen, and open the app from there.</div></div>';
  $('rec').textContent=data.clock.record?'Longest wait: '+fmt(data.clock.record):'';
  $('hist').innerHTML=data.history.map(h=>'<div class="row"><span>'+pt(h.ts)+(h.city?'<div class="small">'+esc(h.city)+'</div>':'')+'</span><span>'+fmt(h.elapsed)+'</span></div>').join('')||'<div class="small">None yet. Be the first!</div>'}
@@ -624,7 +654,9 @@ async function joinNow(){if(DEMO)return;
  if(!r.ok){jm.innerHTML='<p style="margin:0">'+esc((r.data&&r.data.error)||'Could not join. Please try again.')+'</p>';return}
  jm.style.display='none';load()}
 async function unlockDemo(){const r=await api('review',{code:$('rc').value});
- if(r.data&&r.data.ok){DEMO=true;$('demobar').style.display='flex';demo('wait')}else $('rcmsg').textContent='That code is not valid.'}
+ if(r.data&&r.data.ok){DEMO=true;$('rcwrap').style.display='none';$('demobar').style.display='flex';demo('wait')}else $('rcmsg').textContent='That code is not valid.'}
+async function reviewLive(){const r=await api('review',{code:$('rc').value,live:true});
+ if(r.data&&r.data.ok&&r.data.live){$('rcbox').style.display='none';$('rcmsg').textContent='';load()}else $('rcmsg').textContent='That code is not valid.'}
 function demo(kind){
  const n=Date.now(),H=3600000;
  const d={clock:{since:new Date(n-(2*86400+6*3600+41*60)*1000).toISOString(),matches:9,record:6*86400+7200},

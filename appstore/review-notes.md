@@ -17,7 +17,11 @@ NATIVE FEATURES
 Background location during the window, Apple push notifications, haptic feedback on a sighting.
 
 HOW TO REVIEW
-The game starts when 150 members have joined, so on a fresh install the main screen shows the live clock and member count. Demo mode: on the first screen, tap "App Review? Enter code", type APPLE-REVIEW, and tap Start demo. A bar of buttons (Waiting, Picked to ask, Asked to raise, Sighted, History) lets you see every screen without needing 150 members or a second device. Demo mode takes no real action and changes no data.
+The daily pick is random (about 3.36% of members) and the game starts when 150 members have joined, so a review device is rarely picked on its own. Use the review code APPLE-REVIEW. It is in the app at the bottom of the screen: "App Review? Enter code".
+1. Demo (screens only): tap "Start demo (screens only)". Buttons (Waiting, Picked to ask, Asked to raise, Sighted, History) show every screen. Demo mode takes no real action.
+2. Live test with two devices (real asking, notifications, location, sighting): on BOTH devices enter the code and tap "Live test with two devices". Each device is then a review test member and is always picked. On device 1 tap "Ask a random member to raise their right hand"; the request goes only to your other review device. Device 2 gets a notification and a countdown: allow location and notifications and hold the right hand up (the app shares location only during the 20-minute window). On device 1, within 100 meters, tap "I saw a raised hand". A match message is shown. Review test activity is kept separate from real members and does not change the public counter or history.
+
+There are no questions or answers in this app. "Ask" means asking a random member to hold their right hand up.
 
 LAUNCH AREA
 The game is starting in the San Francisco Bay Area. When a new member taps Join, the app checks location once and does not store it; people outside the area see a friendly "not open in your area yet" message. App Review can use the demo code above to see every screen from anywhere.
