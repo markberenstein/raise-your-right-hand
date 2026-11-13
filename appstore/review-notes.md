@@ -24,6 +24,6 @@ The daily pick is random (about 3.36% of members) and the game starts when 150 m
 There are no questions or answers in this app. "Ask" means asking a random member to hold their right hand up.
 
 LAUNCH AREA
-The game is starting in the San Francisco Bay Area. When a new member taps Join, the app checks location once and does not store it; people outside the area see a friendly "not open in your area yet" message. App Review can use the demo code above to see every screen from anywhere.
+The game is starting in the San Francisco Bay Area. When a new member taps Join, the app checks location once and does not store it; people outside the area see a friendly "not open in your area yet" message. App Review can use the review code above, from anywhere, to see every screen or run the live test.
 
 No login is required. Contact: support@nearune.ai
