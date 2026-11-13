@@ -1,5 +1,6 @@
 import { SQL } from "bun";
-import webpush from "web-push";
+import * as webpushNs from "web-push";
+const webpush: any = (webpushNs as any).default ?? webpushNs; // works whether the package exposes a default export or named exports
 import http2 from "node:http2";
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
 
